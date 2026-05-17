@@ -18,7 +18,7 @@ const RubricDimension = z.object({
 
 const SourceCitation = z.object({
   title: z.string(),
-  url: z.string().url(),
+  url: z.string(),
   publisher: z.string().nullable()
 });
 
