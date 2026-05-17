@@ -1,0 +1,30 @@
+# Node / Next.js
+node_modules/
+.next/
+out/
+dist/
+.turbo/
+
+# Env
+.env
+.env.local
+.env.*.local
+!.env.example
+
+# Prisma
+prisma/migrations/dev.db*
+
+# Tooling
+.DS_Store
+*.log
+coverage/
+.vitest-cache/
+
+# Editor
+.idea/
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+
+# Docker volumes (if mounted locally)
+.pgdata/

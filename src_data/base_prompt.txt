@@ -1,0 +1,139 @@
+Comprehensive recap / handoff prompt for a new AI assistant
+1) User profile & context
+User: 36-year-old Slovak software engineer (Lead/Tech Lead/Senior; strong full-stack + cloud + distributed systems background).
+Current priorities: upgrade “general thinking” ability (solid cognitive foundation), not just become a better coder.
+Constraints:
+Wants a fixed morning routine (highest mental capacity in the morning; also exercises in the morning).
+Wants ~45 minutes/day for this “brain training” (Monday–Friday).
+Saturday can be review (up to ~60 minutes).
+Already does ~45 minutes/day of LeetCode in Rust (Rust chosen specifically because it is cognitively demanding).
+Has many other commitments (work, family, gym, certs, etc.); sustainability matters.
+2) Long-term goals (explicit)
+In ~14 years: retire with passive income ~€20k/month, primarily from business/product/company, not purely investing (though user also builds investments separately).
+Short/mid-term: move to the US (Dallas, TX) in ~4 months; wants to “shine” in US corporate environment, accelerate career, and eventually return to Slovakia at Principal Developer / Architect / high managerial level.
+Wants stable high-level job (e.g., AT&T, architect/manager) that becomes “easy” due to superior thinking; plus eventually own business/co-founder roles.
+3) Career details shared (CV highlights)
+Lead Software Engineer, 10+ years.
+Experience: AT&T (Lead developer; Java enterprise apps, Kafka event-driven, Azure DevOps practices, Temporal workflows), Talentsquare (Lead dev; AWS, AI data processing platform), other roles including CTO managing 30+ engineers, distributed systems, scaling to millions, DevOps/IaC.
+Skills: TS/Node/React, Java, Rust, Python; Postgres/Mongo/Redis; AWS/Azure DevOps; Kafka; Temporal; etc.
+AI interest focus: LLM apps (RAG/Agents).
+Ideal customer (later, for business): mid-market (but user deferred building new assets for now).
+4) Core problem statement (what user wants)
+“Train my brain like bodybuilding trains muscles.”
+Increase “general intelligence” / capability: see what others don’t, solve problems simply and effectively, choose what matters, separate signal from noise.
+User values discipline and “boring work compounding over time,” not chasing “magic asymmetries.”
+User also noted a psychological constraint: tends to avoid failing; recognizes learning requires controlled failure but prefers a system with low-cost feedback loops.
+5) Key conceptual decisions made
+Do not treat this as ‘IQ boosting’ brain games.
+Aim is improving decision quality and thinking clarity via structured reasoning, writing, evidence/assumptions/tradeoffs, and testability.
+
+Training must be primitive, monotonic, progressive (levels).
+Like lifting a barbell: same movement pattern, increasing difficulty over time.
+
+The training is netechnical / general.
+It should transfer to leadership/principal work and everyday decisions.
+
+Mix of sources for practice (weekly pattern):
+
+3 days/week: own real-life situation/decision memos
+2 days/week: web article analysis (e.g., Farnam Street)
+1 day/week (Saturday): LSAT Logical Reasoning drill + review
+Sunday: off
+Daily evaluation loop:
+User wants the assistant to score memos every day with strict rubric.
+
+6) The daily “Brain Gym” exercise (final form)
+User will produce one memo per day. The memo follows a structured template derived from:
+
+claim identification,
+evidence separation,
+assumptions,
+tradeoffs,
+next test (falsifiable step),
+what would change mind (anti-confirmation bias).
+Scoring dimensions (0–10 each):
+
+Clarity (one crisp claim sentence)
+Evidence quality (observations/data/examples; not opinions)
+Assumptions (true prerequisites, not restatements)
+Tradeoffs (concrete, non-generic)
+Testability (specific, cheap, time-bounded next step)
+Assistant returns:
+
+scores + brief rationale,
+overall score,
+top 3 fixes,
+rewrite suggestions:
+improved Claim,
+add 2 missing assumptions,
+add 2 missing tradeoffs,
+replace “fake evidence” with better phrasing,
+one “next rep” assignment for tomorrow,
+at most one clarification question.
+This exercise was informally labeled by the assistant as:
+
+“Claim–Evidence–Assumptions Memo” (or “Decision Quality Memo” / “Structured Reasoning Drill”).
+7) How to handle “claim extraction” issues (important learning)
+Many Farnam Street articles are explanatory essays, not persuasive op-eds; claims may be implicit.
+Rule: claim = what author wants you to believe/do differently, often in lines like:
+“The big idea is…”
+“This reminds us that…”
+“To make better decisions, we must…”
+Example discussed:
+FS “Map and Territory”: claim is not just the title; claim can be “confusing models with reality leads to bad decisions; models are reductions.”
+FS “Bayes’ Theorem”: claim candidates include “Bayes helps update beliefs under uncertainty; continuous updating improves decisions.”
+8) Prepared exercises/resources requested & selected
+User asked for “already prepared exercises” to avoid ambiguity and improve claim extraction.
+
+Recommended prepared practice sources:
+
+LSAC official LSAT Logical Reasoning sample questions (very straightforward claim/conclusion structure).
+GMAT Critical Reasoning strengthen/weaken/assumption questions (explicit conclusions).
+Argument mapping platforms:
+Rationale Online
+Kialo Edu
+For web-article days:
+
+Use short opinion pieces or FS blog posts; prefer short texts (3–8 minutes).
+9) Weekly schedule (agreed pattern)
+Mon: personal situation memo
+Tue: web text memo
+Wed: personal situation memo
+Thu: web text memo
+Fri: personal situation memo
+Sat: LSAT drill (timed set) + short review (≤60 min total)
+Sun: off
+10) “Other-thread evaluator prompt” created (to start a dedicated scoring thread)
+A short prompt was created for another AI thread instructing it to:
+
+score memos across the five dimensions,
+give rewrites and missing assumptions/tradeoffs,
+keep feedback under ~250 words,
+ask max one clarification question,
+be direct/no fluff, no invented facts.
+11) Open items / next steps (what the new assistant should do immediately)
+Operationalize the system:
+
+Provide a clean, reusable daily memo template (copy/paste).
+Provide a weekly checklist for Mon–Sat workflow.
+Prepare “inputs” for the next 2–4 weeks:
+
+For the 2 web-text days/week: recommend a small curated list of articles (ideally 8 articles for 4 weeks) that have clearer thesis statements (can include FS but also more argument-driven sources).
+For LSAT day: provide a stable routine for sourcing questions and tracking error patterns.
+Start daily evaluation:
+
+When user pastes a memo, score it with the rubric and provide rewrites + “next rep”.
+Help user build progression over 16 weeks:
+
+Keep the same daily movement pattern, but gradually increase difficulty:
+earlier weeks: basic claim/evidence separation,
+mid weeks: better assumptions/tradeoffs,
+later weeks: better test design, better compression, better structured communication.
+Clarify logistics only if needed:
+
+Where the user will store memos (Obsidian/Notion/plain files) is optional; feedback preference is “either.”
+12) Constraints to respect
+Must remain netechnical/general (not architecture deep-dives).
+Must remain 45 minutes/day (Mon–Fri), Saturday ≤ 60 minutes, Sunday off.
+User will continue LeetCode (Rust) separately; do not duplicate algorithmic training.
+Primary goal is stronger judgment, clarity, signal/noise filtering, and principal-level thinking performance in US environment.

@@ -1,0 +1,709 @@
+how is this even possible? i added it as a source of this project. ITs called Base.txt and there is a context
+
+Good. English is part of the training, not a separate problem. For technical exercises, your target is not elegant English; it is specific operational language:
+
+“likely DB contention” instead of “database problem”
+“stale full-response cache with incomplete key” instead of “cache issue”
+“duplicate side effects after replay” instead of “syncing problem”
+
+That vocabulary will come from reps.
+
+Here is the next one. This is harder because the obvious fix is dangerous.
+
+Technical Scenario #4 — The retry fix that may take down the platform
+
+Timebox: 45 minutes
+
+Suggested split:
+
+7 min read
+25 min answer
+8 min numerical sanity check
+5 min revise
+
+Target score: 6–7/10.
+
+Context
+
+You are the lead engineer on-call for a B2B SaaS platform.
+
+Customers use your platform to upload CSV files containing business records. The platform validates, enriches, and imports those records into customer accounts.
+
+System flow
+Customer Upload
+  -> Upload API
+  -> File Parser Service
+  -> Validation Service
+  -> Enrichment Service
+  -> Import Worker
+  -> Customer Database
+
+Supporting systems:
+
+Kafka for pipeline events
+Redis for short-lived job state
+Postgres for job metadata
+External Vendor API for enrichment
+S3-compatible object storage for uploaded files
+Normal behavior
+Most files contain 10k–100k records
+Large enterprise files can contain 1M+ records
+Normal import time:
+small files: 5–10 min
+large files: 45–90 min
+SLO:
+99% of imports complete within 2 hours
+failed imports under 1%
+Current normal peak:
+300 files/hour
+average 80k records/file
+around 24M records/hour
+Current incident
+
+Over the last 3 hours:
+
+import completion time is increasing
+many jobs are stuck in VALIDATING or ENRICHING
+failed imports rose from 0.7% → 6.5%
+support has 40+ enterprise tickets
+one strategic customer has a 2M-record import stuck for 2.5 hours
+sales says this customer’s renewal is at risk
+Metrics
+Upload API
+latency normal
+error rate normal
+upload volume normal
+File Parser Service
+throughput normal
+error rate normal
+Validation Service
+CPU: 72%
+memory: normal
+p95 per-record validation latency increased from 4 ms → 11 ms
+error rate normal
+Kafka consumer lag for validation group: growing slowly
+Enrichment Service
+CPU: 28%
+memory normal
+worker threads: mostly waiting
+p95 per-record enrichment latency increased from 90 ms → 650 ms
+error rate increased from 1% → 9%
+retry count per record increased sharply
+Kafka consumer lag for enrichment group: growing fast
+External Vendor API
+status page says “operational”
+p95 latency from your side increased from 80 ms → 700 ms
+timeout rate increased to 7%
+vendor rate-limit responses increased
+vendor support says: “No outage on our side. You may be exceeding your agreed throughput.”
+Import Worker
+throughput down 55%
+waiting on records to finish enrichment
+customer DB metrics normal
+Kafka
+broker CPU normal
+broker disk normal
+no cluster-wide issue
+enrichment topic lag is growing fastest
+Redis
+memory normal
+command latency normal
+Postgres job metadata
+CPU normal
+slow queries normal
+Recent changes
+
+Three changes happened in the last 24 hours.
+
+Change A — Validation Service release, 4 hours ago
+added new duplicate-detection rule
+rule checks records against a per-customer rolling cache
+no known errors
+p95 validation latency increased but still below timeout
+Change B — Enrichment Service release, 5 hours ago
+retry policy changed:
+old: 2 retries, fixed 500 ms delay
+new: 6 retries, exponential backoff up to 30 seconds
+timeout increased:
+old: 1 second
+new: 5 seconds
+added fallback enrichment provider, but fallback is disabled by config
+added more detailed per-record logging
+Change C — Enterprise customer onboarding, started 3 hours ago
+12 new enterprise customers began initial imports
+each importing 500k–2M records
+traffic volume by file count is normal
+traffic volume by records/hour is up 3.5x
+sales promised “same-day migration”
+More observations
+Most stuck jobs are from the new enterprise customers.
+Small customer imports are now also delayed.
+Vendor API latency and rate-limit responses started increasing shortly after the enterprise imports began.
+Enrichment workers spend much of their time waiting for vendor responses or retry backoff.
+Per-record logging volume increased 8x in Enrichment Service.
+Some failed imports fail after repeated enrichment timeouts.
+A senior engineer suggests increasing Enrichment worker replicas from 50 → 200.
+Another engineer suggests enabling fallback enrichment provider globally.
+Product wants to prioritize the strategic customer’s 2M-record import.
+Sales wants to tell customers: “Vendor issue, not our fault.”
+An AI assistant suggests:
+increase Enrichment replicas to 300
+increase timeout to 10 seconds
+increase retries to 10
+enable fallback globally
+disable validation duplicate detection because validation p95 increased
+add logs around each retry attempt
+Numerical sanity check
+
+Answer these inside your solution.
+
+Current normal peak:
+
+300 files/hour
+80k records/file
+24M records/hour
+
+Now record volume is up 3.5x.
+
+Roughly how many records/hour are entering the pipeline now?
+If every record calls the Vendor API once, what is the average Vendor API call rate per second before retries?
+If 9% of calls error and each failed call gets up to 6 retries, what is the rough worst-case extra call amplification?
+Why is adding more Enrichment replicas dangerous?
+
+You do not need perfect math. I want order-of-magnitude reasoning.
+
+Your task
+
+Respond as incident lead.
+
+Use this structure:
+
+1. Problem framing
+
+What kind of incident is this?
+
+2. Most important signals
+
+Which signals matter most?
+
+3. Primary hypothesis
+
+What is the leading failure chain?
+
+4. Alternative hypotheses
+
+What else may contribute?
+
+5. Immediate containment — next 30 minutes
+
+What do you do first?
+
+6. Customer prioritization
+
+How do you handle the strategic customer without destroying everyone else?
+
+7. Rollback/config decision
+
+What do you rollback or change?
+
+8. What you would not do
+
+Which suggestions are dangerous or low quality?
+
+9. Numerical sanity check
+
+Answer the four math questions.
+
+10. Validation
+
+How do you know the system is stabilizing?
+
+11. Follow-up prevention
+
+What should change permanently?
+
+Hints, not answers:
+
+File count is misleading here.
+Record count matters.
+Vendor “operational” does not mean your integration is healthy.
+More replicas may worsen the vendor bottleneck.
+Retry policy may be amplifying the incident.
+Strategic-customer prioritization needs fairness/backpressure.
+The easy story “vendor issue” is not good enough.
+I did not read hints.. do give me them next time please.
+
+1. PROBLEM FRAMING:
+This is a problem with the data processing between Enrichment Service and External API. External API clearly rate-limit our service, as our service is obviously processing a large amount of data due to multiple onboarding processes of big enterprise clients.
+2. SIGNALS:
+- import completion time increasing
+- vendor rate-limit responses increased
+- p95 latency from the service increased 80 -> 700ms thats x8,75
+- they say no outage on our side, you may be exceeding your agreed throughput
+- worker threads in enrichments mostly waiting (on the external service?)
+- kafka enrichment group growing fast, that signals that the enrichment service is not fast enough
+- 12 new enterprise customers began initial imports
+- each importing 500k–2M records
+- traffic volume by records/hour is up 3.5x
+3. PRIMARY HYPOTHESIS:
+Sales promised same day migraton, so they started to migrate new big clients at same time(12 of them). They have a lot of data, in avg 1,25M rows per sheet. Thats 3.5x normal (the claim from the report). If we take a look on "what changed" so except the fact we are migrating them all at once,
+then change - A, has definitely impact but it is not so damaging. Basically the row process increased x2,75, therefore if client has 1,250M rows in the sheet then the validation is 3.8 hour (if there is one worker assigned for them). I am not wondering one client reports that they are stuck on validation for 2.5 hours. But thats not the biggest problem, the problem is error rate (i understand errored rows are not imported). Proepr setup of the enrichment service is probably out of the scope of this, but i dont like exponential backof up to 30 seconds while timeout is 5 seconds.  I mean if we kill it after 5 seconds why we should keep trying so long? (i assume the backof is per row / request). So here it is we are dropping the data (returning errors) from enrichment service, because external api cannot proces the amount of data and we need to "move on".
+4. Validation service now processes rows for longer so it has impact on some of the findings described in the report
+5. Call the external service provider, talk them about increasing quota / the amount of data they can process for us. If there actually is fallback enrichment provider using different account / external API lets use it.
+6. Prioritize theirs import? I am not sure if there is such functionality in the system. If it is, lets use that, very handy. Otherwise, we can increase the amount of the workers in the system. Therefore we can process data faster. But the external api is single point of failure. We can send them apology and cookies for sure.
+7. Rollback / config
+Well to have exponential backof in enrichment service is actually good, given the amount of data. With 2 retries -> 500ms, we could be hitting rate limit much more often. As the main problem is external service i would edit the 30 backof, does not make sense if we timeout after 5 seconds.
+8. What not do do:
+"A senior engineer suggests increasing Enrichment worker replicas from 50 → 200." <- this wont help if the problem is external service. We can do this, but only if they wont be rate limiting us, the amount of data they will process for us increase significantly. Still this needs planning
+"Sales wants to tell customers: “Vendor issue, not our fault.”" <- this is dangerous.  I mean if they are not having outage and from our side we are hitting them much more than we should its our fault, not theirs. This may disrupt trust / good relationship with provider
+Most of the AI suggestions are bullshit, enrichment increase not helps, timeout to 10 and retries to 10, still 30 seconds waiting on exp backof, disable validation means even bigger spike (if new client is added),
+9. Numerical sanity check:
+- 84M/hour records per hour
+- 23 333 req/s
+- 12 K of additional requests, not sure how to compute this
+- because it will increase the amount of calls we do against Vendor API
+10. Depends on what you mean by stabilizing.. we will survive this shitstorm, big enterprise clients are integrated we are back in normaln numbers.. OR! the situation is stabilizing during the big ent. clients import:
+- p95 latency (External Vendor) request to them,. back to 80 ms.
+- vendor rate-limit responses decrease
+- error rate on enrichment service decrease
+retry count per record decrease
+- afka consumer lag for enrichment group: not growing anymore, steadily being smaller
+11. Planning :) I mean if sales knows we are going to integrate 12 big clients all at once, they need to be sure dev section is prepared for this. The app can obviously handle it buit the external services not. Therefore there must be fallback, multiple providers for ext services.
+
+
+
+You did not read the hints, and that is fine. I will omit hints next time so the scenario stays cleaner and less leading.
+
+Thought for 10s
+
+This is your best technical answer so far in terms of root-cause direction. You correctly saw the real bottleneck: record volume exploded, enrichment depends on an external API, retries amplify load, and adding workers can make it worse.
+
+But your containment plan is still too soft and too dependent on the vendor. In a real incident, “call the vendor and ask for more quota” is useful, but it is not containment. Containment is what you control in the next 30 minutes.
+
+Using our technical-scenario rubric — framing, signals, hypothesis, tradeoffs, validation, and practical containment — I’d score this around 6.5/10. That is real progress.
+
+Score
+1. Problem framing — 8/10
+
+Good.
+
+You correctly framed it as:
+
+Enrichment Service + External Vendor API bottleneck under unexpected enterprise record volume.
+
+A sharper version:
+
+This is a throughput/backpressure incident caused by a 3.5x record-volume spike hitting an externally rate-limited enrichment dependency, made worse by retry amplification and long per-record waits.
+
+That is the principal-level framing.
+
+2. Signals — 8/10
+
+Strong list. You noticed the important things:
+
+vendor latency up
+vendor rate limits up
+enrichment lag growing fast
+enrichment workers waiting
+record volume up 3.5x
+12 large enterprise imports started
+vendor says you may exceed throughput
+
+Good.
+
+Missing one important signal:
+
+Small customer imports are also delayed.
+
+That means lack of workload isolation / fairness. Big enterprise jobs are now hurting everyone.
+
+3. Primary hypothesis — 6/10
+
+Directionally right, but too messy.
+
+You mixed:
+
+enterprise migration surge
+validation latency
+enrichment timeouts
+backoff
+error rates
+
+The clean failure chain is:
+
+Sales/onboarding triggered 12 large imports, increasing record volume 3.5x. Enrichment calls the Vendor API per record. Vendor begins rate-limiting and slowing responses. Enrichment workers spend time waiting on vendor calls and retry backoff. The new retry policy increases retry amplification and keeps records in-flight longer. Kafka enrichment lag grows, imports miss SLO, and small customers are delayed because capacity is not isolated.
+
+That is the chain.
+
+Your validation math was not reliable:
+
+“1.25M rows * 11ms = 3.8 hours”
+
+That assumes one serial worker for that customer. In this system, validation is likely parallelized. Validation got slower and contributes, but it is not the main blocker. Enrichment is clearly the main blocker.
+
+4. Alternative hypotheses — 4/10
+
+You only partially answered this.
+
+Good alternative:
+
+Validation duplicate-detection rule may contribute to delay.
+
+Other alternatives:
+
+per-record logging 8x may increase I/O/cost and reduce throughput
+fallback provider disabled means no resiliency path
+customer imports not isolated by tenant/job size
+retry/backoff config may create worker starvation
+vendor quota may be lower than assumed
+large jobs may be monopolizing partitions/workers
+5. Immediate containment — 4/10
+
+This was the main weakness.
+
+You said:
+
+call vendor to increase quota
+use fallback provider
+maybe increase workers if quota increases
+
+Useful, but not enough.
+
+In the next 30 minutes, the priority is to stop the system from self-amplifying.
+
+Better containment:
+
+Declare incident and freeze new large enterprise imports.
+Add/throttle global outbound rate limit to Vendor API below agreed quota.
+Reduce retries immediately — e.g. from 6 to 1–2 with jittered backoff.
+Stop treating every record as equally urgent; put large imports into separate queue or lower priority.
+Protect small customer imports with reserved capacity.
+Disable or sample per-record enrichment retry logging if it is generating 8x logs.
+For the strategic customer, process in controlled batches, not unlimited full-speed.
+Contact vendor for temporary quota increase, but do not rely on it.
+
+That is incident handling.
+
+6. Customer prioritization — 5/10
+
+You recognized uncertainty:
+
+not sure if prioritization functionality exists.
+
+Fair. But as incident lead, you need a plan even without a built-in feature.
+
+Options:
+
+pause some other enterprise jobs
+process strategic customer in batches
+reserve a percentage of enrichment capacity for strategic customer
+reserve another percentage for normal/small customers
+avoid starving everyone else
+communicate realistic ETA based on current drain rate
+
+Do not just increase workers to prioritize them. That can crush the vendor harder.
+
+7. Rollback/config decision — 5/10
+
+You were right that exponential backoff is not inherently bad.
+
+But in this incident, the new retry policy is probably harmful because it increases in-flight time and retry amplification.
+
+I would change config quickly:
+
+rollback timeout from 5s closer to 1s or 2s if vendor is overloaded
+rollback retries from 6 to 1–2
+add jitter
+enforce vendor-side client rate limit
+maybe enable fallback only for selected customers or selected record types, not globally
+disable excessive per-record logging or sample it
+
+Your comment about 30s backoff vs 5s timeout is slightly confused. Timeout is how long one request waits. Backoff is how long before the next attempt. They are different. The issue is not that 30s backoff “doesn’t make sense”; the issue is that too many retries at massive volume create amplified load and long completion tails.
+
+8. What not to do — 8/10
+
+Strong section.
+
+Correct:
+
+do not blindly increase replicas
+do not increase retries/timeouts
+do not blame vendor publicly when your demand exceeded agreement
+do not disable validation casually
+do not add more logs
+
+Good.
+
+One nuance:
+
+“enable fallback globally” is also dangerous.
+
+Fallback provider may have different quality, cost, quota, latency, or correctness behavior. Use it selectively/canary if needed.
+
+9. Numerical sanity check — 7/10
+
+You got most of it.
+
+Normal:
+
+24M records/hour
+
+Now:
+
+24M * 3.5 = 84M records/hour
+
+Vendor calls per second before retries:
+
+84M / 3600 ≈ 23,333 calls/sec
+
+Worst-case extra call amplification:
+
+9% fail
+up to 6 retries
+extra calls = 84M * 0.09 * 6 = 45.36M extra calls/hour
+per second = 45.36M / 3600 ≈ 12,600 extra calls/sec
+
+So your “12K additional requests” was basically correct.
+
+Total worst-case call rate:
+
+23.3k + 12.6k ≈ 35.9k calls/sec
+
+Why adding replicas is dangerous:
+
+it increases concurrency against the vendor
+increases rate-limit responses
+increases timeout/retry amplification
+may worsen lag by creating more failed work
+can turn a slow external dependency into a self-inflicted retry storm
+10. Validation — 7/10
+
+Good metrics:
+
+vendor p95 back toward baseline
+rate limits decrease
+enrichment error rate decreases
+retry count decreases
+enrichment lag stops growing and drains
+
+Add:
+
+import completion time returns toward SLO
+small customer jobs recover
+per-tenant queue age stabilizes
+vendor call rate stays below quota
+strategic customer makes measurable progress
+failed import rate drops below threshold
+11. Follow-up prevention — 6/10
+
+Good direction:
+
+sales/onboarding must coordinate with engineering.
+
+But make it more concrete:
+
+enterprise onboarding capacity planning checklist
+record-volume-based admission control, not file-count-based
+per-tenant/job-size queues
+vendor quota dashboard
+client-side rate limiter
+retry budgets
+circuit breaker
+fallback provider runbook
+bulk import scheduling
+SLOs for large migrations separate from normal imports
+sales cannot promise same-day migration without capacity approval
+Overall: 6.5/10
+
+Very good progress.
+
+Your strongest improvement: you are now finding the real bottleneck instead of chasing random services.
+
+Your main remaining gap: containment discipline.
+
+You still want to solve by:
+
+calling vendor
+increasing quota
+enabling fallback
+maybe adding workers
+
+Those may help, but they are not the first control loop.
+
+The first control loop is:
+
+reduce pressure, reduce amplification, isolate customers, then drain safely.
+
+Strong answer sketch
+
+A stronger answer would sound like this:
+
+This is a throughput/backpressure incident in the enrichment stage. Record volume rose 3.5x due to simultaneous enterprise onboarding, and every record depends on an external vendor with finite quota. The new retry and timeout policy amplified vendor load and tied up enrichment workers waiting on slow calls. The result is growing enrichment lag, missed import SLOs, and spillover delay for small customers. Immediate containment is to freeze new large imports, enforce outbound rate limits, reduce retries, isolate large enterprise jobs from normal imports, and process the strategic customer in controlled batches. Do not add replicas until vendor capacity is confirmed, because more workers will likely increase rate-limit errors and retry storms. Stabilization is proven when vendor rate-limit responses fall, enrichment lag stops growing, retry count drops, failed imports decline, and queue age decreases by tenant.
+
+That is the level.
+
+i love those 8/10 :D thats real progress. I put some more effort into these..
+
+In the past i was able to find out real bottleneck. I just dont put enough effort to explain myself precisely.
+
+and this scenario was actually much more difficult compared to previous ones.
+I need to understand i must act in more hypothetic way.. basically the more quality assumptions is better even they maybe cannot be done / implemented .
+
+Ok next time i will know.
+
+Lets contnuinue with LSAT
+Thought for 10s
+
+Good. And yes: in technical scenarios, you are allowed to say conditional things like:
+
+If we have queue prioritization, use it. If not, pause selected jobs or create manual batching.
+
+That is not “making stuff up.” That is incident-lead thinking under uncertainty.
+
+Now LSAT.
+
+This one is harder. No hints. Some answers will be tempting but too strong, too narrow, or the wrong question type.
+
+LSAT Logical Reasoning Drill #3
+
+Total time: 42 minutes
+
+Suggested pacing:
+
+Q1–Q5: 5 minutes each
+Q6–Q8: 6 minutes each
+
+Rules:
+
+One pass.
+No internet.
+Read all answer choices unless you are completely certain and can explain the structure.
+Answer with letter + 1–2 sentence reason.
+Measure your time.
+
+Send back:
+
+1. A — reason
+2. D — reason
+...
+Question 1 — Necessary Assumption
+
+Time limit: 5 minutes
+
+A city required restaurants to display calorie counts next to menu items. Six months later, the average number of calories per lunch order at participating restaurants had decreased by 9%. Therefore, the policy caused customers to choose lower-calorie meals.
+
+Which one of the following is an assumption required by the argument?
+
+A. Customers generally prefer lower-calorie meals when calorie information is available.
+B. The decrease was not caused entirely by restaurants removing higher-calorie items from their menus.
+C. Restaurants that displayed calorie counts were more popular than restaurants that did not.
+D. Most customers understood how many calories they should consume in a day.
+E. The policy did not affect dinner orders as much as lunch orders.
+
+Question 2 — Sufficient Assumption
+
+Time limit: 5 minutes
+
+Any farming policy that substantially reduces water usage without reducing crop yield should be adopted. A proposed sensor-based irrigation system reduced the amount of water applied to test fields by 18%. Crop yields in those test fields were no lower than yields in comparable fields without the sensors. Therefore, the proposed irrigation system should be adopted.
+
+Which one of the following, if assumed, enables the conclusion to be properly drawn?
+
+A. The proposed sensor-based irrigation system is less expensive than building new reservoirs.
+B. Reducing water usage by 18% counts as substantially reducing water usage.
+C. Farmers using the system reported that it was easy to install and maintain.
+D. Crop yields in the test fields were slightly higher than expected.
+E. The system would work equally well on every type of crop.
+
+Question 3 — Flaw
+
+Time limit: 5 minutes
+
+A historian argues:
+
+“Several ancient cities built defensive walls, and many of those cities survived for centuries. Therefore, defensive walls were the main reason those cities survived for so long.”
+
+Which one of the following best describes the flaw in the argument?
+
+A. It assumes that any city without defensive walls must have failed quickly.
+B. It ignores the possibility that the same factors that allowed cities to build walls also helped them survive.
+C. It treats survival for centuries as if it were the only important measure of a city’s success.
+D. It overlooks the possibility that some defensive walls were built badly.
+E. It assumes that all ancient cities faced the same military threats.
+
+Question 4 — Weaken
+
+Time limit: 5 minutes
+
+A nonprofit began sending personalized thank-you letters to donors. In the year after the letters began, the percentage of donors who gave again the following year increased. The nonprofit’s director concluded that personalized thank-you letters made donors more likely to donate again.
+
+Which one of the following, if true, most weakens the director’s conclusion?
+
+A. Some donors said they appreciated receiving personal letters.
+B. The nonprofit also stopped asking one-time event attendees for donations during the same year.
+C. The letters were written by volunteers rather than paid staff.
+D. The nonprofit’s total number of donors increased during the same year.
+E. Many donors give to more than one nonprofit each year.
+
+Question 5 — Evaluate the Argument
+
+Time limit: 5 minutes
+
+A company switched from open office seating to assigned quiet rooms for work requiring concentration. After the change, employees submitted fewer requests for deadline extensions. Management concluded that the quiet rooms improved employees’ ability to complete focused work on time.
+
+Which one of the following would be most useful to know in evaluating the argument?
+
+A. Whether employees preferred quiet rooms to open office seating.
+B. Whether the number and difficulty of deadline-driven assignments remained roughly the same after the change.
+C. Whether the quiet rooms were used more often in the morning or afternoon.
+D. Whether employees in other companies also work better in quiet rooms.
+E. Whether the company saved money by reducing open office space.
+
+Question 6 — Inference / Quantifier Trap
+
+Time limit: 6 minutes
+
+A survey of local libraries found the following:
+
+Every library that extended its weekend hours saw an increase in weekend visitors.
+Some libraries that saw an increase in weekend visitors did not see an increase in total weekly visitors.
+No library that reduced weekday hours saw an increase in total weekly visitors.
+
+Which one of the following must be true?
+
+A. Some libraries that extended weekend hours did not see an increase in total weekly visitors.
+B. Every library that saw an increase in total weekly visitors extended its weekend hours.
+C. No library that reduced weekday hours extended its weekend hours.
+D. Some libraries that saw increased weekend visitors may have had fewer weekday visitors.
+E. Any library that reduced weekday hours did not see an increase in total weekly visitors.
+
+Question 7 — Principle
+
+Time limit: 6 minutes
+
+A town is deciding whether to preserve an old marketplace. The building is expensive to maintain, but it is still used weekly by local farmers, it is one of the few remaining examples of the town’s original architecture, and many residents say it is where they first met neighbors after moving to town.
+
+Which one of the following principles, if accepted, most strongly supports preserving the marketplace?
+
+A. A building should be preserved whenever it is older than most nearby buildings.
+B. A building should be preserved only if it produces more direct revenue than it costs to maintain.
+C. A building should be preserved when it provides ongoing practical use and carries community value that would be difficult to recreate if lost.
+D. A building should be replaced whenever a newer structure could serve more people.
+E. A building should be preserved if at least some residents have positive memories of it.
+
+Question 8 — Parallel Flaw
+
+Time limit: 6 minutes
+
+Argument:
+
+“Most applicants who completed the advanced training program were hired within three months. Lena was hired within three months. Therefore, Lena probably completed the advanced training program.”
+
+Which one of the following contains the same reasoning flaw?
+
+A. Most patients who received the new treatment recovered within a week. Marco recovered within a week. Therefore, Marco probably received the new treatment.
+B. Most students who study regularly pass the exam. Priya studies regularly. Therefore, Priya will probably pass the exam.
+C. Most cars with faulty batteries fail to start in cold weather. This car has a faulty battery. Therefore, it will probably fail to start in cold weather.
+D. Most runners who train daily improve their race times. Elena trained daily. Therefore, Elena probably improved her race time.
+E. Most houses on the hill have stone foundations. This house is on the hill. Therefore, it probably has a stone foundation.
+
+When you send answers, I’ll score hard and identify whether each miss is English, logic, or question-type confusion.
