@@ -42,15 +42,8 @@ export type EvaluationCommon = {
   nextRep: string;
   clarificationQuestion?: string | null;
   errorPatternTags: string[];
-  missClassifications: Array<
-    | "english_comprehension"
-    | "logic"
-    | "question_type_confusion"
-    | "too_strong"
-    | "too_narrow"
-    | "wrong_conclusion"
-    | "quantifier_modal"
-  >;
+  // Per-mode Zod schemas constrain this further (LSAT uses a union; memo/incident require [])
+  missClassifications: string[];
 };
 
 export type GenerateResult = {
