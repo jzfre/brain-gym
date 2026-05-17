@@ -8,7 +8,7 @@ Output (validates against the provided JSON schema):
 - suggestedPacing: 4 steps — read (7 min), answer (25 min), numerical sanity check (8 min), revise (5 min)
 - userVisiblePrompt: the full scenario in the spec's incident format — Context, System flow, Supporting systems, Normal behavior, Current incident, Metrics, Recent changes, More observations, Numerical sanity check, Your task, with the 11-section answer structure spelled out.
 - requiredAnswerSections: 11 sections matching the answer structure (Problem framing through Follow-up prevention)
-- hiddenAnswerKey: { primaryRootCause, containmentSteps[], rejectedDangerousIdeas[], expectedNumericRanges }
+- hiddenAnswerKey (exact fields): { primaryRootCause: string, containmentSteps: string[], rejectedDangerousIdeas: string[], expectedNumericRanges: Array<{ metric: string, range: string }> }
 - rubric.dimensions: 11 dimensions matching the spec (Problem framing, Signal selection, Primary hypothesis, Alternative hypotheses, Immediate containment, Customer prioritization, Rollback/config decision, Rejected bad ideas, Numerical sanity check, Validation, Follow-up prevention), each max 10
 - tags: 3-6 tags reflecting system type (e.g., queue, vendor, retry-amplification)
 - sourceCitations: include any inspiration links from web_search; otherwise empty

@@ -16,12 +16,12 @@ const baseProblem = {
   userVisiblePrompt:
     "Long incident scenario text padded so it definitely passes the 200 character minimum length check. " +
     "We describe context, system flow, supporting systems, normal behavior, current incident, metrics, recent changes, more observations, numerical sanity check, and the user's task with all 11 answer sections.",
-  requiredAnswerSections: eleven((i) => ({ order: i + 1, title: `Section ${i + 1}` })),
+  requiredAnswerSections: eleven((i) => ({ order: i + 1, title: `Section ${i + 1}`, description: null })),
   hiddenAnswerKey: {
     primaryRootCause: "x",
     containmentSteps: ["a", "b"],
     rejectedDangerousIdeas: ["c"],
-    expectedNumericRanges: { qps: "100-200" }
+    expectedNumericRanges: [{ metric: "qps", range: "100-200" }]
   },
   rubric: {
     dimensions: eleven((i) => ({ name: `Dim${i}`, maxScore: 10, description: "" }))
@@ -48,7 +48,7 @@ describe("IncidentEvaluationSchema", () => {
     const ev = {
       overallScore: 6.5,
       shortDiagnosis: "Containment too soft.",
-      dimensions: eleven((i) => ({ name: `Dim${i}`, score: 6, rationale: "ok" })),
+      dimensions: eleven((i) => ({ name: `Dim${i}`, score: 6, rationale: "ok", sharperVersion: null, missingItems: null })),
       summary: "Solid analysis but soft containment.",
       topFixes: ["a", "b", "c"],
       rewriteSuggestions: { betterContainment: ["x"], betterCustomerPrioritization: "y", betterNumericalSanityCheck: "z" },

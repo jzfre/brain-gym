@@ -10,7 +10,7 @@ Output (must validate against the provided JSON schema):
 - suggestedPacing: a few labeled steps that sum to timeboxMinutes
 - userVisiblePrompt: the article/scenario text (300-700 words) followed by the answer template instructions
 - requiredAnswerSections: exactly these 6 sections in order — Claim, Evidence, Assumptions, Tradeoffs, Next test, What would change my mind
-- hiddenAnswerKey: ideal claim, 3 must-cite pieces of evidence, 3 key assumptions, 2 strongest tradeoffs, 1 sharpest next test, 1 mind-changer
+- hiddenAnswerKey (exact fields): { idealClaim: string, mustCiteEvidence: string[] (3 items), keyAssumptions: string[] (3 items), strongestTradeoffs: string[] (2 items), sharpestNextTest: string, mindChanger: string }
 - rubric.dimensions: Claim clarity (max 10), Evidence quality (max 10), Assumptions (max 10), Tradeoffs (max 10), Testability (max 10)
 - tags: 3-6 topical tags (lowercase, kebab-case)
 - sourceCitations: include URL + title + publisher for each source consulted; empty array if none

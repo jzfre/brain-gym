@@ -5,7 +5,7 @@ const PacingItem = z.object({ label: z.string(), minutes: z.number().int().posit
 const AnswerSection = z.object({
   order: z.number().int().positive(),
   title: z.string(),
-  description: z.string().optional()
+  description: z.string().nullable()
 });
 const RubricDimension = z.object({
   name: z.string(),
@@ -15,7 +15,7 @@ const RubricDimension = z.object({
 const SourceCitation = z.object({
   title: z.string(),
   url: z.string().url(),
-  publisher: z.string().optional()
+  publisher: z.string().nullable()
 });
 
 export const IncidentGeneratedProblemSchema = z.object({
@@ -25,7 +25,12 @@ export const IncidentGeneratedProblemSchema = z.object({
   suggestedPacing: z.array(PacingItem).min(3),
   userVisiblePrompt: z.string().min(200),
   requiredAnswerSections: z.array(AnswerSection).length(11),
-  hiddenAnswerKey: z.record(z.unknown()),
+  hiddenAnswerKey: z.object({
+    primaryRootCause: z.string(),
+    containmentSteps: z.array(z.string()),
+    rejectedDangerousIdeas: z.array(z.string()),
+    expectedNumericRanges: z.array(z.object({ metric: z.string(), range: z.string() }))
+  }),
   rubric: z.object({ dimensions: z.array(RubricDimension).length(11) }),
   tags: z.array(z.string()).min(1).max(8),
   sourceCitations: z.array(SourceCitation),
@@ -36,8 +41,8 @@ const EvalDimension = z.object({
   name: z.string(),
   score: z.number(),
   rationale: z.string(),
-  sharperVersion: z.string().optional(),
-  missingItems: z.array(z.string()).optional()
+  sharperVersion: z.string().nullable(),
+  missingItems: z.array(z.string()).nullable()
 });
 
 export const IncidentEvaluationSchema = z.object({
@@ -51,7 +56,7 @@ export const IncidentEvaluationSchema = z.object({
     betterCustomerPrioritization: z.string(),
     betterNumericalSanityCheck: z.string()
   }),
-  strongAnswerSketch: z.string().optional(),
+  strongAnswerSketch: z.string().nullable(),
   nextRep: z.string().min(3),
   clarificationQuestion: z.string().nullable(),
   errorPatternTags: z.array(z.string()).max(4),

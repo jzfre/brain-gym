@@ -7,7 +7,7 @@ const PacingItem = z.object({ label: z.string(), minutes: z.number().int().posit
 const AnswerSection = z.object({
   order: z.number().int().positive(),
   title: z.string(),
-  description: z.string().optional()
+  description: z.string().nullable()
 });
 
 const RubricDimension = z.object({
@@ -19,7 +19,7 @@ const RubricDimension = z.object({
 const SourceCitation = z.object({
   title: z.string(),
   url: z.string().url(),
-  publisher: z.string().optional()
+  publisher: z.string().nullable()
 });
 
 export const MemoGeneratedProblemSchema = z.object({
@@ -29,7 +29,14 @@ export const MemoGeneratedProblemSchema = z.object({
   suggestedPacing: z.array(PacingItem).min(1),
   userVisiblePrompt: z.string().min(50),
   requiredAnswerSections: z.array(AnswerSection).length(6),
-  hiddenAnswerKey: z.record(z.unknown()),
+  hiddenAnswerKey: z.object({
+    idealClaim: z.string(),
+    mustCiteEvidence: z.array(z.string()),
+    keyAssumptions: z.array(z.string()),
+    strongestTradeoffs: z.array(z.string()),
+    sharpestNextTest: z.string(),
+    mindChanger: z.string()
+  }),
   rubric: z.object({ dimensions: z.array(RubricDimension).length(5) }),
   tags: z.array(z.string()).min(1).max(8),
   sourceCitations: z.array(SourceCitation),
@@ -40,8 +47,8 @@ const EvalDimension = z.object({
   name: z.string(),
   score: z.number(),
   rationale: z.string(),
-  sharperVersion: z.string().optional(),
-  missingItems: z.array(z.string()).optional()
+  sharperVersion: z.string().nullable(),
+  missingItems: z.array(z.string()).nullable()
 });
 
 export const MemoEvaluationSchema = z.object({
@@ -56,7 +63,7 @@ export const MemoEvaluationSchema = z.object({
     missingTradeoffs: z.array(z.string()).length(2),
     betterPhrasingForWeakEvidence: z.array(z.string())
   }),
-  strongAnswerSketch: z.string().optional(),
+  strongAnswerSketch: z.string().nullable(),
   nextRep: z.string().min(3),
   clarificationQuestion: z.string().nullable(),
   errorPatternTags: z.array(z.string()).max(4),

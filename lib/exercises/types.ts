@@ -17,11 +17,11 @@ export type GeneratedProblemCommon = {
   timeboxMinutes: number;
   suggestedPacing: Array<{ label: string; minutes: number }>;
   userVisiblePrompt: string;
-  requiredAnswerSections: Array<{ order: number; title: string; description?: string }>;
+  requiredAnswerSections: Array<{ order: number; title: string; description: string | null }>;
   hiddenAnswerKey: Record<string, unknown>;
   rubric: { dimensions: Array<{ name: string; maxScore: number; description: string }> };
   tags: string[];
-  sourceCitations: Array<{ title: string; url: string; publisher?: string }>;
+  sourceCitations: Array<{ title: string; url: string; publisher: string | null }>;
   duplicateAvoidanceKey: string;
 };
 
@@ -32,15 +32,15 @@ export type EvaluationCommon = {
     name: string;
     score: number;
     rationale: string;
-    sharperVersion?: string;
-    missingItems?: string[];
+    sharperVersion: string | null;
+    missingItems: string[] | null;
   }>;
   summary: string;
   topFixes: string[];
   rewriteSuggestions: Record<string, string | string[]>;
-  strongAnswerSketch?: string;
+  strongAnswerSketch: string | null;
   nextRep: string;
-  clarificationQuestion?: string | null;
+  clarificationQuestion: string | null;
   errorPatternTags: string[];
   // Per-mode Zod schemas constrain this further (LSAT uses a union; memo/incident require [])
   missClassifications: string[];

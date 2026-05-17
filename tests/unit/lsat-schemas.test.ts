@@ -13,8 +13,8 @@ const validProblem = {
   userVisiblePrompt:
     "Stimulus... about municipal budgets and policy.\nQ: Which one of the following is required by the argument?\nA. ...\nB. ...\nC. ...\nD. ...\nE. ...",
   requiredAnswerSections: [
-    { order: 1, title: "Choice" },
-    { order: 2, title: "Reason" }
+    { order: 1, title: "Choice", description: null },
+    { order: 2, title: "Reason", description: null }
   ],
   hiddenAnswerKey: {
     correctChoice: "C",
@@ -52,9 +52,9 @@ describe("LsatEvaluationSchema", () => {
       overallScore: 4.0,
       shortDiagnosis: "Picked a too-strong distractor.",
       dimensions: [
-        { name: "Correctness", score: 0, rationale: "wrong" },
-        { name: "Reasoning quality", score: 2, rationale: "ok" },
-        { name: "Error pattern recognition", score: 2, rationale: "ok" }
+        { name: "Correctness", score: 0, rationale: "wrong", sharperVersion: null, missingItems: null },
+        { name: "Reasoning quality", score: 2, rationale: "ok", sharperVersion: null, missingItems: null },
+        { name: "Error pattern recognition", score: 2, rationale: "ok", sharperVersion: null, missingItems: null }
       ],
       summary: "Strong stimulus parse but missed the modal trap.",
       topFixes: ["Check modal scope"],
