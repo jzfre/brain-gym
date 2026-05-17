@@ -1,0 +1,21 @@
+Generate ONE memo-extraction exercise.
+
+Source material: a short real-world article, argument, decision memo, or situation. If web_search is available and the user requested a fresh source, find a recent (last 30 days) article from a reputable publication; otherwise compose an original short scenario in the same style.
+
+Output (must validate against the provided JSON schema):
+
+- title: 5-8 words
+- difficulty: as requested
+- timeboxMinutes: 25 (easy), 35 (medium), 45 (hard)
+- suggestedPacing: a few labeled steps that sum to timeboxMinutes
+- userVisiblePrompt: the article/scenario text (300-700 words) followed by the answer template instructions
+- requiredAnswerSections: exactly these 6 sections in order — Claim, Evidence, Assumptions, Tradeoffs, Next test, What would change my mind
+- hiddenAnswerKey: ideal claim, 3 must-cite pieces of evidence, 3 key assumptions, 2 strongest tradeoffs, 1 sharpest next test, 1 mind-changer
+- rubric.dimensions: Claim clarity (max 10), Evidence quality (max 10), Assumptions (max 10), Tradeoffs (max 10), Testability (max 10)
+- tags: 3-6 topical tags (lowercase, kebab-case)
+- sourceCitations: include URL + title + publisher for each source consulted; empty array if none
+- duplicateAvoidanceKey: a short canonical phrase (title+topic) for hashing
+
+Constraints:
+- difficulty hard: more ambiguity, conflicting evidence, harder tradeoffs.
+- Do not produce a memo on a topic listed in the "avoid" hint.
