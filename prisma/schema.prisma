@@ -1,0 +1,174 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum ExerciseSlug {
+  MEMO_EXTRACTION
+  INCIDENT_RESPONSE
+  LSAT_LOGICAL_REASONING
+}
+
+enum PromptRole {
+  BASE
+  GENERATOR
+  EVALUATOR
+  WEEKLY_REVIEW
+}
+
+enum Difficulty {
+  EASY
+  MEDIUM
+  HARD
+}
+
+enum AttemptStatus {
+  SUBMITTED
+  EVALUATED
+  EVAL_FAILED
+}
+
+enum ModelRunPurpose {
+  GENERATE_PROBLEM
+  EVALUATE_ATTEMPT
+}
+
+enum ModelRunStatus {
+  PENDING
+  COMPLETED
+  ERROR
+}
+
+model User {
+  id          String   @id @default(uuid())
+  email       String   @unique
+  displayName String
+  createdAt   DateTime @default(now())
+  attempts    Attempt[]
+}
+
+model ExerciseType {
+  id          String       @id @default(uuid())
+  slug        ExerciseSlug @unique
+  name        String
+  description String
+  active      Boolean      @default(true)
+  problems    Problem[]
+  prompts     PromptVersion[]
+}
+
+model PromptVersion {
+  id                String        @id @default(uuid())
+  name              String
+  role              PromptRole
+  exerciseTypeId    String?
+  exerciseType      ExerciseType? @relation(fields: [exerciseTypeId], references: [id])
+  content           String
+  version           Int           @default(1)
+  active            Boolean       @default(true)
+  createdAt         DateTime      @default(now())
+  generatedProblems Problem[]     @relation("ProblemGenerationPrompt")
+  evaluations       Evaluation[]
+
+  @@unique([role, exerciseTypeId, version])
+}
+
+model Problem {
+  id                        String        @id @default(uuid())
+  exerciseTypeId            String
+  exerciseType              ExerciseType  @relation(fields: [exerciseTypeId], references: [id])
+  title                     String
+  promptText                String
+  userVisiblePayload        Json
+  hiddenAnswerKey           Json
+  rubric                    Json
+  timeboxMinutes            Int
+  suggestedPacing           Json
+  requiredAnswerSections    Json
+  difficulty                Difficulty
+  tags                      String[]      @default([])
+  sourceKind                String        @default("generated")
+  uniquenessHash            String
+  generatedByModel          String
+  generationPromptVersionId String
+  generationPromptVersion   PromptVersion @relation("ProblemGenerationPrompt", fields: [generationPromptVersionId], references: [id])
+  createdAt                 DateTime      @default(now())
+  sources                   ProblemSource[]
+  attempts                  Attempt[]
+
+  @@unique([exerciseTypeId, uniquenessHash])
+  @@index([createdAt])
+}
+
+model ProblemSource {
+  id              String   @id @default(uuid())
+  problemId       String
+  problem         Problem  @relation(fields: [problemId], references: [id], onDelete: Cascade)
+  url             String
+  title           String?
+  publisher       String?
+  retrievedAt     DateTime @default(now())
+  citationPayload Json?
+}
+
+model Attempt {
+  id               Int           @id @default(autoincrement())
+  userId           String
+  user             User          @relation(fields: [userId], references: [id])
+  problemId        String
+  problem          Problem       @relation(fields: [problemId], references: [id])
+  responseText     String
+  timeSpentSeconds Int
+  submittedAt      DateTime      @default(now())
+  status           AttemptStatus @default(SUBMITTED)
+  evaluation       Evaluation?
+
+  @@index([userId, submittedAt])
+}
+
+model Evaluation {
+  id                       String                @id @default(uuid())
+  attemptId                Int                   @unique
+  attempt                  Attempt               @relation(fields: [attemptId], references: [id], onDelete: Cascade)
+  evaluatorPromptVersionId String
+  evaluatorPromptVersion   PromptVersion         @relation(fields: [evaluatorPromptVersionId], references: [id])
+  model                    String
+  overallScore             Float
+  shortDiagnosis           String
+  summary                  String
+  topFixes                 Json
+  rewriteSuggestions       Json
+  strongAnswerSketch       String?
+  nextRep                  String
+  clarificationQuestion    String?
+  errorPatternTags         String[]              @default([])
+  missClassifications      String[]              @default([])
+  rawOutput                Json
+  createdAt                DateTime              @default(now())
+  dimensions               EvaluationDimension[]
+}
+
+model EvaluationDimension {
+  id           String     @id @default(uuid())
+  evaluationId String
+  evaluation   Evaluation @relation(fields: [evaluationId], references: [id], onDelete: Cascade)
+  dimension    String
+  score        Float
+  rationale    String
+}
+
+model ModelRun {
+  id              String          @id @default(uuid())
+  purpose         ModelRunPurpose
+  model           String
+  requestPayload  Json
+  responsePayload Json?
+  usagePayload    Json?
+  status          ModelRunStatus  @default(PENDING)
+  error           String?
+  createdAt       DateTime        @default(now())
+}
