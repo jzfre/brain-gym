@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import Link from "next/link";
+import { LogoutButton } from "@/components/layout/logout-button";
 import "./globals.css";
 
 export const metadata = { title: "Brain Gym", description: "Deliberate practice for reasoning" };
@@ -23,6 +24,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
               <Link href="/admin/prompts" className="hover:underline">
                 Admin
               </Link>
+              <LogoutButton />
             </nav>
           </div>
         </header>

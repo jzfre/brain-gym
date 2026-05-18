@@ -8,7 +8,8 @@ describe("parseConfig", () => {
       OPENAI_API_KEY: "sk-test",
       OPENAI_MODEL: "gpt-5.5",
       OPENAI_REASONING_EFFORT: "medium",
-      LOCAL_USER_ID: "00000000-0000-0000-0000-000000000001"
+      LOCAL_USER_ID: "00000000-0000-0000-0000-000000000001",
+      APP_PASSWORD: "test-password"
     });
     expect(cfg.openai.model).toBe("gpt-5.5");
     expect(cfg.localUserId).toBe("00000000-0000-0000-0000-000000000001");
@@ -20,7 +21,8 @@ describe("parseConfig", () => {
         DATABASE_URL: "postgresql://x",
         OPENAI_MODEL: "gpt-5.5",
         OPENAI_REASONING_EFFORT: "medium",
-        LOCAL_USER_ID: "00000000-0000-0000-0000-000000000001"
+        LOCAL_USER_ID: "00000000-0000-0000-0000-000000000001",
+      APP_PASSWORD: "test-password"
       } as Record<string, string>)
     ).toThrow(/OPENAI_API_KEY/);
   });
@@ -30,7 +32,8 @@ describe("parseConfig", () => {
       DATABASE_URL: "postgresql://x",
       OPENAI_API_KEY: "sk-test",
       OPENAI_MODEL: "gpt-5.5",
-      LOCAL_USER_ID: "00000000-0000-0000-0000-000000000001"
+      LOCAL_USER_ID: "00000000-0000-0000-0000-000000000001",
+      APP_PASSWORD: "test-password"
     });
     expect(cfg.openai.reasoningEffort).toBe("medium");
   });
