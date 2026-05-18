@@ -1,24 +1,26 @@
 "use client";
 
-import { useState, useTransition } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 
 export function LoginForm() {
-  const router = useRouter();
   const params = useSearchParams();
-  const next = params.get("next") ?? "/today";
+  const rawNext = params.get("next") ?? "/today";
+  // Only allow same-origin relative paths
+  const next = rawNext.startsWith("/") && !rawNext.startsWith("//") ? rawNext : "/today";
 
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
-  const [pending, startTransition] = useTransition();
+  const [pending, setPending] = useState(false);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
+    setPending(true);
 
     const res = await fetch("/api/auth/login", {
       method: "POST",
@@ -27,13 +29,13 @@ export function LoginForm() {
     });
 
     if (!res.ok) {
+      setPending(false);
       setError(res.status === 401 ? "Wrong password." : `Login failed (${res.status})`);
       return;
     }
-    startTransition(() => {
-      router.replace(next);
-      router.refresh();
-    });
+    // Hard navigation: forces a fresh server render so the cookie is honored
+    // and the layout/middleware see the authenticated state from scratch.
+    window.location.assign(next);
   }
 
   return (
