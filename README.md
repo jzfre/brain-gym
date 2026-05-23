@@ -32,7 +32,7 @@ cp .env.example .env
 docker compose up -d --build
 ```
 
-Once it's up, the app is on `http://localhost:${APP_PORT:-3000}`. Point your reverse proxy at that port. The container handles `prisma migrate deploy` on every start and seeds the DB on first start only.
+Once it's up, the app is on `http://localhost:${APP_PORT:-3111}`. Point your reverse proxy at that port. The container handles `prisma migrate deploy` on every start and seeds the DB on first start only.
 
 | Task | Command |
 |---|---|
@@ -47,7 +47,7 @@ Once it's up, the app is on `http://localhost:${APP_PORT:-3000}`. Point your rev
 - **Terminate HTTPS in front of the container.** The login is a single shared password; never expose port `${APP_PORT}` directly to the public internet without TLS.
 - **Change `APP_PASSWORD`** in `.env` before opening up the host.
 - **Postgres is bound to `127.0.0.1:5438`** so it's reachable from the host (for `psql`, `prisma studio`) but never from the public interface. Don't change this unless you know what you're doing.
-- **Set `APP_PORT`** in `.env` if `3000` clashes with something else on the host.
+- **Set `APP_PORT`** in `.env` if `3111` clashes with something else on the host.
 
 ### Host dev and Docker side-by-side
 

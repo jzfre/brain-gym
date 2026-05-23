@@ -30,7 +30,7 @@ services:
       DATABASE_URL: "postgresql://brain:brain@db:5432/brain_gym?schema=public"
       NODE_ENV: production
     ports:
-      - "${APP_PORT:-3000}:3000"
+      - "${APP_PORT:-3111}:3000"
     depends_on:
       db:
         condition: service_healthy
