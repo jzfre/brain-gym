@@ -20,6 +20,39 @@ Open http://localhost:3000.
 
 Postgres listens on host port **5438** to avoid clashing with other local Postgres containers; if you want the standard 5432 instead, edit `docker-compose.yml` and the `DATABASE_URL` in `.env`.
 
+## Deploy with Docker
+
+Run the whole stack (Next.js + Postgres) in containers with a single command. Useful for a small VPS or home server fronted by NGINX or Cloudflare Tunnel.
+
+Prereqs: Docker + Docker Compose.
+
+```bash
+cp .env.example .env
+# edit .env: set OPENAI_API_KEY and APP_PASSWORD at minimum
+docker compose up -d --build
+```
+
+Once it's up, the app is on `http://localhost:${APP_PORT:-3000}`. Point your reverse proxy at that port. The container handles `prisma migrate deploy` on every start and seeds the DB on first start only.
+
+| Task | Command |
+|---|---|
+| Tail logs | `docker compose logs -f app` |
+| Restart app only | `docker compose restart app` |
+| Stop everything | `docker compose down` |
+| Update after `git pull` | `docker compose up -d --build` |
+| Reset DB (destructive) | `docker compose down -v` |
+
+### Production checklist
+
+- **Terminate HTTPS in front of the container.** The login is a single shared password; never expose port `${APP_PORT}` directly to the public internet without TLS.
+- **Change `APP_PASSWORD`** in `.env` before opening up the host.
+- **Postgres is bound to `127.0.0.1:5438`** so it's reachable from the host (for `psql`, `prisma studio`) but never from the public interface. Don't change this unless you know what you're doing.
+- **Set `APP_PORT`** in `.env` if `3000` clashes with something else on the host.
+
+### Host dev and Docker side-by-side
+
+The same `.env` file works for both: when you run `pnpm dev`, the app reads `DATABASE_URL` and connects to Postgres on `localhost:5438`. When you run `docker compose up`, compose overrides `DATABASE_URL` to point at the `db` service on the internal network. You don't need two env files.
+
 ## Scripts
 
 | Command | What it does |

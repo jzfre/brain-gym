@@ -8,7 +8,9 @@ services:
       POSTGRES_PASSWORD: brain
       POSTGRES_DB: brain_gym
     ports:
-      - "5438:5432"
+      # Bind to loopback only — host dev can still connect via 127.0.0.1:5438,
+      # but the DB is never exposed to the public network interface.
+      - "127.0.0.1:5438:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
@@ -16,6 +18,22 @@ services:
       interval: 5s
       timeout: 5s
       retries: 10
+
+  app:
+    build: .
+    container_name: brain_gym_app
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      # Override .env's host-dev DATABASE_URL with the in-network address.
+      # Same .env file works for `pnpm dev` (5438) and `docker compose up` (db:5432).
+      DATABASE_URL: "postgresql://brain:brain@db:5432/brain_gym?schema=public"
+      NODE_ENV: production
+    ports:
+      - "${APP_PORT:-3000}:3000"
+    depends_on:
+      db:
+        condition: service_healthy
 
 volumes:
   pgdata:
