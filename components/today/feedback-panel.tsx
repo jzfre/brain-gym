@@ -8,7 +8,7 @@ import { Separator } from "@/components/ui/separator";
 import { Button } from "@/components/ui/button";
 
 type Detail = {
-  attempt: { id: number; responseText: string };
+  attempt: { id: number; responseText: string; status: string };
   evaluation: {
     overallScore: number;
     shortDiagnosis: string;
@@ -23,14 +23,77 @@ type Detail = {
 
 export function FeedbackPanel({ attemptId }: { attemptId: number }) {
   const [data, setData] = useState<Detail | null>(null);
-  useEffect(() => {
-    fetch(`/api/history/${attemptId}`)
-      .then((r) => r.json())
-      .then(setData);
-  }, [attemptId]);
+  const [failed, setFailed] = useState(false);
+  // Bumped on retry to restart the polling effect.
+  const [attempt, setAttempt] = useState(0);
 
-  if (!data) return <p className="text-sm text-muted-foreground">Loading feedback…</p>;
-  if (!data.evaluation) return <p>No evaluation yet.</p>;
+  useEffect(() => {
+    let active = true;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+
+    async function poll() {
+      try {
+        const r = await fetch(`/api/history/${attemptId}`);
+        const d = (await r.json()) as Detail;
+        if (!active) return;
+        setData(d);
+        if (d.evaluation) return; // evaluation landed — stop polling
+        if (d.attempt?.status === "EVAL_FAILED") {
+          setFailed(true);
+          return;
+        }
+      } catch {
+        // transient (e.g. the request was cut) — keep polling
+      }
+      if (active) timer = setTimeout(poll, 3000);
+    }
+
+    poll();
+    return () => {
+      active = false;
+      if (timer) clearTimeout(timer);
+    };
+  }, [attemptId, attempt]);
+
+  async function retry() {
+    setFailed(false);
+    setData(null);
+    await fetch(`/api/attempts/${attemptId}/evaluate`, { method: "POST" }).catch(() => {});
+    setAttempt((n) => n + 1);
+  }
+
+  if (failed) {
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle>Evaluation failed</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <p className="text-sm text-muted-foreground">
+            Your answer was saved (attempt #{attemptId}). The evaluation didn’t complete — you can
+            retry it now or later from History.
+          </p>
+          <div className="flex gap-2">
+            <Button onClick={retry}>Retry evaluation</Button>
+            <Button asChild variant="outline">
+              <Link href="/history">History</Link>
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  if (!data || !data.evaluation) {
+    return (
+      <Card>
+        <CardContent className="py-10 text-center text-sm text-muted-foreground">
+          Evaluating your answer… this can take up to a minute or two. You can leave this page — the
+          result is saved and will show up in History.
+        </CardContent>
+      </Card>
+    );
+  }
 
   const e = data.evaluation;
   return (

@@ -38,7 +38,7 @@ export function AnswerEditor({ problem, slug }: { problem: Problem; slug: string
   const [submitting, setSubmitting] = useState(false);
   const [stopped, setStopped] = useState(false);
   const [attemptId, setAttemptId] = useState<number | null>(null);
-  const [evaluationId, setEvaluationId] = useState<string | null>(null);
+  const [started, setStarted] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   async function submit(responseText: string) {
@@ -55,13 +55,15 @@ export function AnswerEditor({ problem, slug }: { problem: Problem; slug: string
       if (!attemptRes.ok) throw new Error("Failed to save attempt");
       const { attemptId: aid } = await attemptRes.json();
       setAttemptId(aid);
+      // Kick off evaluation; it runs in the background (may exceed Cloudflare's
+      // request cap), so we don't await the result here — the feedback panel
+      // polls for it.
       const evalRes = await fetch(`/api/attempts/${aid}/evaluate`, { method: "POST" });
       if (!evalRes.ok) {
         const msg = await evalRes.json().catch(() => ({}));
-        throw new Error(`Evaluation failed: ${msg.message ?? evalRes.status}`);
+        throw new Error(`Couldn’t start evaluation: ${msg.message ?? evalRes.status}`);
       }
-      const { evaluationId: eid } = await evalRes.json();
-      setEvaluationId(eid);
+      setStarted(true);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -69,7 +71,7 @@ export function AnswerEditor({ problem, slug }: { problem: Problem; slug: string
     }
   }
 
-  if (evaluationId && attemptId) {
+  if (started && attemptId) {
     return <FeedbackPanel attemptId={attemptId} />;
   }
 
@@ -83,11 +85,6 @@ export function AnswerEditor({ problem, slug }: { problem: Problem; slug: string
       ) : null}
     </div>
   ) : null;
-
-  const evaluatingBlock =
-    attemptId && !evaluationId ? (
-      <span className="text-sm text-muted-foreground">Saved. Evaluating…</span>
-    ) : null;
 
   function shell(body: ReactNode) {
     return (
@@ -124,7 +121,6 @@ export function AnswerEditor({ problem, slug }: { problem: Problem; slug: string
           <Button onClick={() => submit(text)} disabled={submitting || text.trim().length === 0}>
             {submitting ? "Submitting…" : "Submit"}
           </Button>
-          {evaluatingBlock}
         </div>
         {errorBlock}
       </>
@@ -183,7 +179,6 @@ export function AnswerEditor({ problem, slug }: { problem: Problem; slug: string
             Next
           </Button>
         )}
-        {evaluatingBlock}
       </div>
       {errorBlock}
     </section>
