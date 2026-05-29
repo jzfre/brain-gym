@@ -6,9 +6,12 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Button } from "@/components/ui/button";
+import { LsatSetFeedback } from "./lsat-set-feedback";
+import type { LsatPublicQuestion, LsatQuestionResult } from "@/lib/exercises/types";
 
 type Detail = {
   attempt: { id: number; responseText: string; status: string };
+  problem?: { userVisiblePayload?: { questions?: LsatPublicQuestion[] } };
   evaluation: {
     overallScore: number;
     shortDiagnosis: string;
@@ -18,6 +21,7 @@ type Detail = {
     strongAnswerSketch?: string | null;
     dimensions: Array<{ dimension: string; score: number; rationale: string }>;
     errorPatternTags: string[];
+    rawOutput?: { questions?: LsatQuestionResult[] } | null;
   } | null;
 };
 
@@ -96,6 +100,34 @@ export function FeedbackPanel({ attemptId }: { attemptId: number }) {
   }
 
   const e = data.evaluation;
+
+  // LSAT sets render a per-question breakdown instead of the single-answer view.
+  const lsatResults = e.rawOutput?.questions;
+  if (Array.isArray(lsatResults) && lsatResults.length > 0) {
+    return (
+      <div className="space-y-6">
+        <LsatSetFeedback
+          overallScore={e.overallScore}
+          shortDiagnosis={e.shortDiagnosis}
+          summary={e.summary}
+          topFixes={e.topFixes}
+          nextRep={e.nextRep}
+          errorPatternTags={e.errorPatternTags}
+          results={lsatResults}
+          questions={data.problem?.userVisiblePayload?.questions ?? []}
+        />
+        <div className="flex gap-2">
+          <Button asChild variant="outline">
+            <Link href="/today">New problem</Link>
+          </Button>
+          <Button asChild variant="ghost">
+            <Link href="/history">History</Link>
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <Card>
       <CardHeader>

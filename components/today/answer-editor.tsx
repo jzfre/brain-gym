@@ -66,6 +66,7 @@ export function AnswerEditor({ problem, slug }: { problem: Problem; slug: string
       setStarted(true);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
+      setStopped(false); // submit failed; resume the timer while the user is still working
     } finally {
       setSubmitting(false);
     }

@@ -7,6 +7,8 @@ import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { AnswerEditor } from "./answer-editor";
+import { LsatSetRunner } from "./lsat-set-runner";
+import type { LsatPublicQuestion } from "@/lib/exercises/types";
 
 const EXERCISES = [
   { slug: "MEMO_EXTRACTION", name: "Memo" },
@@ -22,6 +24,7 @@ type ProblemPayload = {
     userVisiblePrompt: string;
     requiredAnswerSections: Array<{ order: number; title: string; description?: string }>;
     suggestedPacing: Array<{ label: string; minutes: number }>;
+    questions?: LsatPublicQuestion[];
   };
 };
 
@@ -58,6 +61,21 @@ export function ExercisePicker() {
   }
 
   if (problem) {
+    const q = problem.userVisiblePayload.questions;
+    if (slug === "LSAT_LOGICAL_REASONING" && q && q.length > 0) {
+      return (
+        <LsatSetRunner
+          problem={{
+            id: problem.id,
+            userVisiblePayload: {
+              title: problem.userVisiblePayload.title,
+              timeboxMinutes: problem.userVisiblePayload.timeboxMinutes,
+              questions: q
+            }
+          }}
+        />
+      );
+    }
     return <AnswerEditor problem={problem} slug={slug} />;
   }
 

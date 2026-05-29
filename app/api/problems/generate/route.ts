@@ -63,7 +63,9 @@ export async function POST(req: Request) {
         userVisiblePrompt: problem.userVisiblePrompt,
         requiredAnswerSections: problem.requiredAnswerSections,
         rubric: problem.rubric,
-        tags: problem.tags
+        tags: problem.tags,
+        // LSAT sets carry their questions here; other modes leave this undefined.
+        ...(problem.questions ? { questions: problem.questions } : {})
       };
 
       const inserted = await tx.problem.create({

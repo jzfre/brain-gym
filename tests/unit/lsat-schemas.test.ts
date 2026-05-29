@@ -1,70 +1,84 @@
 import { describe, it, expect } from "vitest";
 import { LsatGeneratedProblemSchema, LsatEvaluationSchema } from "@/lib/exercises/lsat-logical-reasoning/schemas";
 
+function question(number: number) {
+  return {
+    number,
+    stimulus:
+      "A city replaced its bus fleet and ridership rose the following quarter, so officials concluded the new buses caused the increase.",
+    questionStem: "Which one of the following is an assumption required by the argument?",
+    choices: { A: "alpha", B: "beta", C: "gamma", D: "delta", E: "epsilon" },
+    questionType: "Necessary assumption",
+    correctChoice: "C",
+    explanation: "The argument depends on ruling out other causes of the ridership increase.",
+    distractorAnalyses: { A: "too strong", B: "irrelevant", C: "correct", D: "reversed", E: "out of scope" }
+  };
+}
+
 const validProblem = {
-  title: "Necessary Assumption — municipal budgets",
+  title: "Logical reasoning set — assumptions & flaws",
   difficulty: "MEDIUM",
-  timeboxMinutes: 6,
+  timeboxMinutes: 45,
   suggestedPacing: [
     { label: "read stimulus", minutes: 2 },
     { label: "prephrase", minutes: 1 },
-    { label: "eliminate", minutes: 3 }
+    { label: "eliminate", minutes: 2 }
   ],
-  userVisiblePrompt:
-    "Stimulus... about municipal budgets and policy.\nQ: Which one of the following is required by the argument?\nA. ...\nB. ...\nC. ...\nD. ...\nE. ...",
-  requiredAnswerSections: [
-    { order: 1, title: "Choice", description: null },
-    { order: 2, title: "Reason", description: null }
-  ],
-  hiddenAnswerKey: {
-    correctChoice: "C",
-    explanation: "Because the argument depends on this assumption.",
-    distractorAnalyses: { A: "too strong", B: "irrelevant", C: "correct", D: "reversed", E: "out of scope" },
-    questionType: "Necessary Assumption"
-  },
+  questions: [question(1), question(2), question(3)],
   rubric: {
     dimensions: [
       { name: "Correctness", maxScore: 10, description: "" },
-      { name: "Reasoning quality", maxScore: 5, description: "" },
-      { name: "Error pattern recognition", maxScore: 5, description: "" }
+      { name: "Reasoning quality", maxScore: 5, description: "" }
     ]
   },
-  tags: ["necessary-assumption", "municipal-budgets"],
+  tags: ["necessary-assumption", "flaw"],
   sourceCitations: [],
-  duplicateAvoidanceKey: "na-municipal-budgets"
+  duplicateAvoidanceKey: "set-assumptions-flaws"
 };
 
 describe("LsatGeneratedProblemSchema", () => {
-  it("accepts a valid LSAT question", () => {
+  it("accepts a valid LSAT set", () => {
     expect(LsatGeneratedProblemSchema.parse(validProblem)).toBeTruthy();
   });
 
-  it("rejects hiddenAnswerKey without a valid choice", () => {
+  it("rejects a question with an invalid correctChoice", () => {
     const bad = JSON.parse(JSON.stringify(validProblem));
-    bad.hiddenAnswerKey.correctChoice = "F";
+    bad.questions[0].correctChoice = "F";
+    expect(() => LsatGeneratedProblemSchema.parse(bad)).toThrow();
+  });
+
+  it("rejects a set with too few questions", () => {
+    const bad = JSON.parse(JSON.stringify(validProblem));
+    bad.questions = [question(1)];
     expect(() => LsatGeneratedProblemSchema.parse(bad)).toThrow();
   });
 });
 
 describe("LsatEvaluationSchema", () => {
-  it("accepts a valid evaluation with miss classifications", () => {
+  it("accepts a valid set evaluation", () => {
     const ev = {
-      overallScore: 4.0,
-      shortDiagnosis: "Picked a too-strong distractor.",
-      dimensions: [
-        { name: "Correctness", score: 0, rationale: "wrong", sharperVersion: null, missingItems: null },
-        { name: "Reasoning quality", score: 2, rationale: "ok", sharperVersion: null, missingItems: null },
-        { name: "Error pattern recognition", score: 2, rationale: "ok", sharperVersion: null, missingItems: null }
-      ],
-      summary: "Strong stimulus parse but missed the modal trap.",
-      topFixes: ["Check modal scope"],
-      rewriteSuggestions: { betterReason: "Because the conclusion needs..." },
-      strongAnswerSketch: "...",
-      nextRep: "5 NA reps focused on modal scope",
-      clarificationQuestion: null,
-      errorPatternTags: ["modal-trap"],
-      missClassifications: ["too_strong", "quantifier_modal"]
+      shortDiagnosis: "Solid on flaws, shaky on necessary-assumption scope.",
+      summary: "You correctly identified causal flaws but over-selected too-strong assumptions in NA questions.",
+      topFixes: ["Negate the assumption to test necessity", "Watch modal scope"],
+      nextRep: "5 necessary-assumption reps with the negation test",
+      errorPatternTags: ["too-strong", "modal-trap"],
+      questions: [
+        { number: 1, explanation: "Right because it rules out alternatives.", reasoningCritique: "Good causal read.", missClassification: null },
+        { number: 2, explanation: "The flaw is a part-whole error.", reasoningCritique: "Missed the scope shift.", missClassification: "too_strong" }
+      ]
     };
     expect(LsatEvaluationSchema.parse(ev)).toBeTruthy();
+  });
+
+  it("rejects an invalid missClassification", () => {
+    const bad = {
+      shortDiagnosis: "ok ok",
+      summary: "summary long enough",
+      topFixes: ["fix"],
+      nextRep: "rep",
+      errorPatternTags: [],
+      questions: [{ number: 1, explanation: "explain", reasoningCritique: "crit", missClassification: "nope" }]
+    };
+    expect(() => LsatEvaluationSchema.parse(bad)).toThrow();
   });
 });

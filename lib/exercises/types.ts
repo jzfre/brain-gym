@@ -11,6 +11,31 @@ export type GenerateInput = {
   };
 };
 
+export type Choice = "A" | "B" | "C" | "D" | "E";
+
+// One LSAT question as shown to the user (answer key stripped). A LSAT problem is
+// a *set* of these; other modes leave `questions` undefined.
+export type LsatPublicQuestion = {
+  number: number;
+  stimulus: string;
+  questionStem: string;
+  choices: Record<Choice, string>;
+  questionType: string;
+};
+
+// Per-question result for a LSAT set, carried in the evaluation's rawOutput and
+// rendered in the feedback panel and history.
+export type LsatQuestionResult = {
+  number: number;
+  questionType: string;
+  yourChoice: string;
+  yourReasoning: string;
+  correctChoice: string;
+  isCorrect: boolean;
+  explanation: string;
+  reasoningCritique: string;
+};
+
 export type GeneratedProblemCommon = {
   title: string;
   difficulty: Difficulty;
@@ -23,6 +48,8 @@ export type GeneratedProblemCommon = {
   tags: string[];
   sourceCitations: Array<{ title: string; url: string; publisher: string | null }>;
   duplicateAvoidanceKey: string;
+  // LSAT only: the set of questions (no answer key). Persisted into userVisiblePayload.
+  questions?: LsatPublicQuestion[];
 };
 
 export type EvaluationCommon = {
@@ -44,6 +71,9 @@ export type EvaluationCommon = {
   errorPatternTags: string[];
   // Per-mode Zod schemas constrain this further (LSAT uses a union; memo/incident require [])
   missClassifications: string[];
+  // LSAT sets only: per-question breakdown. Stored in the evaluation's rawOutput
+  // (no dedicated column) and read by the feedback panel / history.
+  questions?: LsatQuestionResult[];
 };
 
 export type GenerateResult = {

@@ -4,6 +4,8 @@ import { prisma } from "@/lib/db/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
+import { LsatSetFeedback } from "@/components/today/lsat-set-feedback";
+import type { LsatPublicQuestion, LsatQuestionResult } from "@/lib/exercises/types";
 
 export const dynamic = "force-dynamic";
 
@@ -21,21 +23,96 @@ export default async function AttemptDetailPage({ params }: { params: Promise<{ 
   });
   if (!attempt) notFound();
 
-  const payload = attempt.problem.userVisiblePayload as { userVisiblePrompt: string };
+  const payload = attempt.problem.userVisiblePayload as {
+    userVisiblePrompt?: string;
+    questions?: LsatPublicQuestion[];
+  };
 
+  const header = (
+    <Card>
+      <CardHeader>
+        <CardTitle>{attempt.problem.title}</CardTitle>
+        <div className="flex gap-2 pt-1">
+          <Badge variant="outline">{attempt.problem.exerciseType.name}</Badge>
+          <Badge variant="outline">{attempt.problem.difficulty.toLowerCase()}</Badge>
+        </div>
+      </CardHeader>
+    </Card>
+  );
+
+  const backLink = (
+    <Link href="/history" className="text-sm text-muted-foreground hover:underline">
+      ← back to history
+    </Link>
+  );
+
+  // LSAT set: render the per-question breakdown.
+  if (Array.isArray(payload.questions)) {
+    const questions = payload.questions;
+    const raw = attempt.evaluation?.rawOutput as { questions?: LsatQuestionResult[] } | null;
+    const results = raw?.questions;
+    return (
+      <main className="container mx-auto max-w-3xl space-y-6 py-8">
+        {backLink}
+        {header}
+        {attempt.evaluation && Array.isArray(results) && results.length ? (
+          <LsatSetFeedback
+            overallScore={attempt.evaluation.overallScore}
+            shortDiagnosis={attempt.evaluation.shortDiagnosis}
+            summary={attempt.evaluation.summary}
+            topFixes={attempt.evaluation.topFixes as string[]}
+            nextRep={attempt.evaluation.nextRep}
+            errorPatternTags={attempt.evaluation.errorPatternTags}
+            results={results}
+            questions={questions}
+          />
+        ) : (
+          <>
+            <Card>
+              <CardHeader>
+                <CardTitle>Questions ({questions.length})</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4 text-sm">
+                {[...questions]
+                  .sort((a, b) => a.number - b.number)
+                  .map((q) => (
+                    <div key={q.number} className="whitespace-pre-wrap">
+                      <span className="font-medium">Q{q.number}.</span> {q.stimulus}
+                      {q.questionStem ? `\n\n${q.questionStem}` : ""}
+                    </div>
+                  ))}
+              </CardContent>
+            </Card>
+            {attempt.evaluation ? (
+              <Card>
+                <CardHeader>
+                  <CardTitle>Evaluation — {attempt.evaluation.overallScore.toFixed(1)} / 10</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-2 text-sm">
+                  <p>{attempt.evaluation.shortDiagnosis}</p>
+                  <p className="text-muted-foreground">{attempt.evaluation.summary}</p>
+                  <p className="text-xs text-muted-foreground">
+                    Per-question breakdown isn’t available for this attempt.
+                  </p>
+                </CardContent>
+              </Card>
+            ) : (
+              <p className="text-sm text-muted-foreground">No evaluation stored.</p>
+            )}
+          </>
+        )}
+      </main>
+    );
+  }
+
+  // Memo / Incident: single-answer view.
   return (
     <main className="container mx-auto max-w-3xl space-y-6 py-8">
-      <Link href="/history" className="text-sm text-muted-foreground hover:underline">
-        ← back to history
-      </Link>
-
+      {backLink}
+      {header}
       <Card>
         <CardHeader>
-          <CardTitle>{attempt.problem.title}</CardTitle>
-          <div className="flex gap-2 pt-1">
-            <Badge variant="outline">{attempt.problem.exerciseType.name}</Badge>
-            <Badge variant="outline">{attempt.problem.difficulty.toLowerCase()}</Badge>
-          </div>
+          <CardTitle>Prompt</CardTitle>
         </CardHeader>
         <CardContent>
           <article className="prose prose-sm max-w-none whitespace-pre-wrap">
