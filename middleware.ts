@@ -6,8 +6,15 @@ const PUBLIC_PREFIXES = ["/login", "/api/auth/login", "/api/auth/logout"];
 export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
 
+  // Expose the path to server components so the layout can decide whether to
+  // show app chrome from the URL itself, rather than re-deriving auth (which a
+  // cached/proxied response could get wrong for a logged-in user).
+  const requestHeaders = new Headers(req.headers);
+  requestHeaders.set("x-pathname", pathname);
+  const pass = NextResponse.next({ request: { headers: requestHeaders } });
+
   if (PUBLIC_PREFIXES.some((p) => pathname === p || pathname.startsWith(p + "/"))) {
-    return NextResponse.next();
+    return pass;
   }
 
   const cookie = req.cookies.get(SESSION_COOKIE)?.value ?? "";
@@ -23,7 +30,7 @@ export async function middleware(req: NextRequest) {
     return NextResponse.redirect(loginUrl);
   }
 
-  return NextResponse.next();
+  return pass;
 }
 
 export const config = {

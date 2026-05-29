@@ -1,32 +1,29 @@
 import type { ReactNode } from "react";
 import Link from "next/link";
-import { cookies } from "next/headers";
+import { headers } from "next/headers";
 import { LogoutButton } from "@/components/layout/logout-button";
-import { SESSION_COOKIE, sessionTokenFor, timingSafeEqualStr } from "@/lib/auth";
 import "./globals.css";
 
 export const metadata = { title: "Brain Gym", description: "Deliberate practice for reasoning" };
 
-async function isAuthenticated(): Promise<boolean> {
-  const password = process.env.APP_PASSWORD;
-  if (!password) return false;
-  const cookie = (await cookies()).get(SESSION_COOKIE)?.value ?? "";
-  if (!cookie) return false;
-  const expected = await sessionTokenFor(password);
-  return timingSafeEqualStr(cookie, expected);
-}
-
 export default async function RootLayout({ children }: { children: ReactNode }) {
-  const authed = await isAuthenticated();
+  // Middleware redirects unauthenticated users to /login before any protected
+  // page renders, so anything other than /login is already authenticated. Key
+  // the chrome off the path (set by middleware) instead of re-checking auth here
+  // — that avoids sending a logged-in user to the login prompt if a cached or
+  // proxied response makes a re-derived auth check wrongly false.
+  const pathname = (await headers()).get("x-pathname") ?? "";
+  const showChrome = pathname !== "/login";
+
   return (
     <html lang="en">
       <body className="min-h-screen bg-background text-foreground antialiased">
         <header className="border-b">
           <div className="container mx-auto flex max-w-3xl items-center justify-between py-4">
-            <Link href={authed ? "/today" : "/login"} className="font-semibold tracking-tight">
+            <Link href="/today" className="font-semibold tracking-tight">
               Brain Gym
             </Link>
-            {authed ? (
+            {showChrome ? (
               <nav className="flex gap-4 text-sm">
                 <Link href="/today" className="hover:underline">
                   Today
