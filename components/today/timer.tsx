@@ -2,12 +2,13 @@
 
 import { useEffect, useState } from "react";
 
-export function Timer({ minutes }: { minutes: number }) {
+export function Timer({ minutes, running = true }: { minutes: number; running?: boolean }) {
   const [elapsed, setElapsed] = useState(0);
   useEffect(() => {
+    if (!running) return; // frozen once the answer is submitted
     const t = setInterval(() => setElapsed((s) => s + 1), 1000);
     return () => clearInterval(t);
-  }, []);
+  }, [running]);
   const totalSec = minutes * 60;
   const mm = String(Math.floor(elapsed / 60)).padStart(2, "0");
   const ss = String(elapsed % 60).padStart(2, "0");

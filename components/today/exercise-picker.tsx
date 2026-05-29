@@ -58,7 +58,7 @@ export function ExercisePicker() {
   }
 
   if (problem) {
-    return <AnswerEditor problem={problem} />;
+    return <AnswerEditor problem={problem} slug={slug} />;
   }
 
   return (
