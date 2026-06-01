@@ -1,6 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { problemEmbeddingText } from "@/lib/memory/embedding";
-import { embedText } from "@/lib/memory/embedding";
+import { problemEmbeddingText, embedText } from "@/lib/memory/embedding";
 
 describe("problemEmbeddingText", () => {
   it("combines title, prompt, and sorted tags deterministically", () => {

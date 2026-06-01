@@ -32,7 +32,8 @@ export async function embedText(text: string, embed?: Embedder): Promise<number[
     const cfg = getConfig();
     const resp = await getOpenAI().embeddings.create({ model: cfg.embedding.model, input: text });
     return resp.data[0].embedding;
-  } catch {
+  } catch (err) {
+    console.error("[embedText] embedding failed, skipping semantic dedup:", err);
     return null;
   }
 }
