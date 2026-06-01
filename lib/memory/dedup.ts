@@ -29,6 +29,9 @@ export async function generateUniqueProblem(args: {
   config: DedupConfig;
 }): Promise<DedupOutcome> {
   const { input, deps, config } = args;
+  if (config.maxRetries < 1) {
+    throw new Error("generateUniqueProblem: config.maxRetries must be >= 1");
+  }
   let avoidance = input.avoidanceHint;
   let best: DedupOutcome | null = null;
 
@@ -47,6 +50,8 @@ export async function generateUniqueProblem(args: {
       return { result, embedding, nearestSimilarity: maxSim, isNearDuplicate: false };
     }
 
+    // best.nearestSimilarity is always a number once best is set (it's assigned
+    // maxSim below); the ?? 1 only satisfies the number|null type and is never hit.
     if (best === null || maxSim < (best.nearestSimilarity ?? 1)) {
       best = { result, embedding, nearestSimilarity: maxSim, isNearDuplicate: true };
     }

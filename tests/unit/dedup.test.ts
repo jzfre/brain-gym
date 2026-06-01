@@ -88,3 +88,34 @@ it("accepts immediately and returns null embedding when embed fails", async () =
   expect(out.embedding).toBeNull();
   expect(out.isNearDuplicate).toBe(false);
 });
+
+it("accepts when there are no prior problems (empty neighbors)", async () => {
+  const generate = vi.fn(async () => fakeResult("first"));
+  const findSimilar = vi.fn(async () => []);
+  const out = await generateUniqueProblem({
+    input: baseInput,
+    config,
+    deps: { ...deps0, generate, findSimilar }
+  });
+  expect(generate).toHaveBeenCalledTimes(1);
+  expect(out.isNearDuplicate).toBe(false);
+  expect(out.nearestSimilarity).toBe(0);
+});
+
+it("accumulates colliding neighbors across consecutive retries", async () => {
+  let n = 0;
+  const generate = vi.fn(async () => fakeResult("c" + n));
+  const findSimilar = vi.fn(async () => {
+    n++;
+    if (n === 1) return [{ id: "a", title: "C1", tags: ["t1"], similarity: 0.95 }];
+    if (n === 2) return [{ id: "b", title: "C2", tags: ["t2"], similarity: 0.9 }];
+    return [{ id: "c", title: "ok", tags: [], similarity: 0.1 }];
+  });
+  await generateUniqueProblem({ input: baseInput, config, deps: { ...deps0, generate, findSimilar } });
+  // Third generate call's avoidance hint should carry BOTH prior colliders.
+  const thirdHint = (generate.mock.calls[2] as unknown as [GenerateInput])[0].avoidanceHint;
+  expect(thirdHint.recentTitles).toContain("C1");
+  expect(thirdHint.recentTitles).toContain("C2");
+  expect(thirdHint.recentTags).toContain("t1");
+  expect(thirdHint.recentTags).toContain("t2");
+});
