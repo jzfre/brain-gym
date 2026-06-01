@@ -13,7 +13,7 @@ export default async function HistoryPage() {
     orderBy: { submittedAt: "desc" },
     take: 50,
     include: {
-      problem: { select: { title: true, difficulty: true, exerciseType: { select: { name: true } } } },
+      problem: { select: { title: true, difficulty: true, isNearDuplicate: true, exerciseType: { select: { name: true } } } },
       evaluation: { select: { overallScore: true } }
     }
   });
@@ -38,6 +38,7 @@ export default async function HistoryPage() {
             <CardContent className="flex items-center gap-2 pb-4 text-sm text-muted-foreground">
               <Badge variant="outline">{a.problem.exerciseType.name}</Badge>
               <Badge variant="outline">{a.problem.difficulty.toLowerCase()}</Badge>
+              {a.problem.isNearDuplicate ? <Badge variant="destructive">near-dup</Badge> : null}
               <Badge variant={a.status === "EVAL_FAILED" ? "destructive" : "secondary"}>
                 {a.status.toLowerCase()}
               </Badge>
