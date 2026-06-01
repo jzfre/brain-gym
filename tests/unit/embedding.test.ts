@@ -30,4 +30,16 @@ describe("problemEmbeddingText", () => {
     expect(text).toContain("All cats are mammals.");
     expect(text).toContain("Which must be true?");
   });
+
+  it("treats an empty questions array the same as no questions", () => {
+    const withEmpty = problemEmbeddingText({ title: "T", userVisiblePrompt: "P", tags: ["x"], questions: [] });
+    const without = problemEmbeddingText({ title: "T", userVisiblePrompt: "P", tags: ["x"] });
+    expect(withEmpty).toBe(without);
+  });
+
+  it("is whitespace-insensitive for question stimulus and stem", () => {
+    const a = problemEmbeddingText({ title: "T", userVisiblePrompt: "P", tags: [], questions: [{ stimulus: "  S  ", questionStem: "  Q  " }] });
+    const b = problemEmbeddingText({ title: "T", userVisiblePrompt: "P", tags: [], questions: [{ stimulus: "S", questionStem: "Q" }] });
+    expect(a).toBe(b);
+  });
 });

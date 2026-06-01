@@ -10,9 +10,10 @@ type EmbeddingTextInput = {
 // embeddings.
 export function problemEmbeddingText(p: EmbeddingTextInput): string {
   const tagStr = [...p.tags].map((t) => t.trim().toLowerCase()).sort().join(", ");
+  const base = [p.title.trim(), p.userVisiblePrompt.trim(), tagStr].filter((s) => s.length > 0).join("\n");
   const lsat =
     p.questions && p.questions.length > 0
-      ? "\n" + p.questions.map((q) => `${q.stimulus}\n${q.questionStem}`).join("\n")
+      ? "\n" + p.questions.map((q) => `${q.stimulus.trim()}\n${q.questionStem.trim()}`).join("\n")
       : "";
-  return [p.title.trim(), p.userVisiblePrompt.trim(), tagStr].join("\n") + lsat;
+  return base + lsat;
 }
