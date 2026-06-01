@@ -16,6 +16,10 @@ export async function findSimilarProblems(args: {
   embedding: number[];
   k: number;
 }): Promise<SimilarProblem[]> {
+  // pgvector has no wire-protocol param type, so the vector is rendered to its
+  // text form "[v1,v2,...]" and passed as a BOUND PARAMETER via the Prisma.sql
+  // ${literal} interpolation below (compiles to `$1::vector`, not concatenated
+  // into SQL). Safe: embeddings are numeric floats and never touch the SQL text.
   const literal = `[${args.embedding.join(",")}]`;
   try {
     const rows = await prisma.$queryRaw<SimilarProblem[]>(Prisma.sql`
