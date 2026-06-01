@@ -94,6 +94,9 @@ model Problem {
   tags                      String[]      @default([])
   sourceKind                String        @default("generated")
   uniquenessHash            String
+  embedding                 Unsupported("vector(1536)")?
+  isNearDuplicate           Boolean       @default(false)
+  nearestSimilarity         Float?
   generatedByModel          String
   generationPromptVersionId String
   generationPromptVersion   PromptVersion @relation("ProblemGenerationPrompt", fields: [generationPromptVersionId], references: [id])
