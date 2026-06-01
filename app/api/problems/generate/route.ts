@@ -7,6 +7,9 @@ import { loadAvoidanceHint } from "@/lib/memory/avoidance";
 import { computeUniquenessHash } from "@/lib/memory/uniqueness";
 import { getConfig } from "@/lib/config";
 import { loadActivePrompt } from "@/lib/prompts/registry";
+import { generateUniqueProblem } from "@/lib/memory/dedup";
+import { embedText, problemEmbeddingText } from "@/lib/memory/embedding";
+import { findSimilarProblems } from "@/lib/memory/similarity";
 
 export const runtime = "nodejs";
 
@@ -27,31 +30,27 @@ export async function POST(req: Request) {
     const mode = getMode(exerciseSlug);
     const avoidanceHint = await loadAvoidanceHint({ exerciseSlug });
     const cfg = getConfig();
+    const exerciseType = await prisma.exerciseType.findUniqueOrThrow({ where: { slug: exerciseSlug } });
 
-    let { problem, modelRunId } = await mode.generate({ difficulty, avoidanceHint });
-    let hash = computeUniquenessHash({
+    const outcome = await generateUniqueProblem({
+      input: { difficulty, avoidanceHint },
+      config: { threshold: cfg.dedup.similarityThreshold, maxRetries: cfg.dedup.maxRetries },
+      deps: {
+        generate: (i) => mode.generate(i),
+        embed: (t) => embedText(t),
+        findSimilar: (embedding) =>
+          findSimilarProblems({ exerciseTypeId: exerciseType.id, embedding, k: cfg.dedup.neighborK }),
+        embeddingText: (p) => problemEmbeddingText(p)
+      }
+    });
+
+    const { problem, modelRunId } = outcome.result;
+    const hash = computeUniquenessHash({
       title: problem.title,
       promptText: problem.userVisiblePrompt,
       tags: problem.tags
     });
 
-    if (avoidanceHint.recentHashes.includes(hash)) {
-      const augmented = {
-        ...avoidanceHint,
-        recentHashes: [...avoidanceHint.recentHashes, hash],
-        recentTitles: [...avoidanceHint.recentTitles, problem.title]
-      };
-      const retry = await mode.generate({ difficulty, avoidanceHint: augmented });
-      problem = retry.problem;
-      modelRunId = retry.modelRunId;
-      hash = computeUniquenessHash({
-        title: problem.title,
-        promptText: problem.userVisiblePrompt,
-        tags: problem.tags
-      });
-    }
-
-    const exerciseType = await prisma.exerciseType.findUniqueOrThrow({ where: { slug: exerciseSlug } });
     const generationPrompt = await loadActivePrompt({ role: PromptRole.GENERATOR, exerciseSlug });
 
     const created = await prisma.$transaction(async (tx) => {
@@ -82,10 +81,17 @@ export async function POST(req: Request) {
           difficulty: problem.difficulty,
           tags: problem.tags,
           uniquenessHash: hash,
+          isNearDuplicate: outcome.isNearDuplicate,
+          nearestSimilarity: outcome.nearestSimilarity,
           generatedByModel: cfg.openai.model,
           generationPromptVersionId: generationPrompt.id
         }
       });
+
+      if (outcome.embedding) {
+        const literal = `[${outcome.embedding.join(",")}]`;
+        await tx.$executeRaw`UPDATE "Problem" SET embedding = ${literal}::vector WHERE id = ${inserted.id}`;
+      }
 
       for (const c of problem.sourceCitations) {
         await tx.problemSource.create({
