@@ -20,6 +20,11 @@ Open http://localhost:3000.
 
 Postgres listens on host port **5438** to avoid clashing with other local Postgres containers; if you want the standard 5432 instead, edit `docker-compose.yml` and the `DATABASE_URL` in `.env`.
 
+The database runs the `pgvector/pgvector:pg16` image (Postgres 16 + the `pgvector`
+extension) so semantic duplicate prevention can store problem embeddings. If you
+are upgrading an older checkout that used `postgres:16-alpine`, recreate the
+volume once: `docker compose down -v && docker compose up -d db && pnpm db:migrate`.
+
 ## Deploy with Docker
 
 Run the whole stack (Next.js + Postgres) in containers with a single command. Useful for a small VPS or home server fronted by NGINX or Cloudflare Tunnel.
@@ -72,6 +77,9 @@ The same `.env` file works for both: when you run `pnpm dev`, the app reads `DAT
 
 See `.env.example`. Required: `DATABASE_URL`, `OPENAI_API_KEY`, `OPENAI_MODEL`, `LOCAL_USER_ID`.
 
+Optional (semantic dedup, with defaults): `EMBEDDING_MODEL` (`text-embedding-3-small`),
+`DEDUP_SIMILARITY_THRESHOLD` (`0.85`), `DEDUP_MAX_RETRIES` (`3`), `DEDUP_NEIGHBOR_K` (`5`).
+
 ## Structure
 
 - `app/` — Next.js App Router pages + API routes
@@ -90,8 +98,29 @@ See `.env.example`. Required: `DATABASE_URL`, `OPENAI_API_KEY`, `OPENAI_MODEL`, 
 4. Register in `lib/exercises/registry.ts`.
 5. Add a tab in `components/today/exercise-picker.tsx`.
 
+## Duplicate prevention
+
+Two layers stop repeated problems:
+
+1. **Exact hash** — a SHA-256 over the normalized title, prompt start, and tags
+   (`lib/memory/uniqueness.ts`), enforced by a unique constraint per exercise type.
+2. **Semantic gate** — each generated problem is embedded (OpenAI
+   `text-embedding-3-small`) and compared by cosine similarity against prior
+   problems of the same type via `pgvector` (`lib/memory/similarity.ts`). If the
+   nearest prior problem is at or above `DEDUP_SIMILARITY_THRESHOLD`, generation
+   retries (up to `DEDUP_MAX_RETRIES`), feeding the colliding problems back as
+   things to avoid. If every retry is still too similar, the least-similar
+   candidate is saved and flagged `near-dup` (visible in History and
+   `/admin/problems`).
+
+Embedding failures never block generation: a problem still saves, just without an
+embedding (and so without the semantic check for that one).
+
 ## Troubleshooting
 
 - **Prisma can't connect:** confirm `docker compose ps` shows the `brain_gym_db` container healthy, and `.env` `DATABASE_URL` matches `docker-compose.yml` creds + port.
 - **Integration tests fail with "no active prompt":** run `pnpm db:seed`.
 - **OpenAI 400 on `web_search`:** your account may not have the tool enabled; remove the `tools` block in the affected generator temporarily.
+- **Migration fails with "type vector does not exist":** the DB container isn't on
+  the `pgvector/pgvector` image. Stop it, recreate the volume
+  (`docker compose down -v`), and bring it back up before `pnpm db:migrate`.
