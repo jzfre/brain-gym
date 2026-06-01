@@ -29,7 +29,7 @@ describe("findSimilarProblems", () => {
     });
     promptVersionId = prompt.id;
 
-    async function make(title: string, hash: string, axis: number) {
+    async function make(title: string, hash: string, axis: number, tags: string[] = []) {
       const p = await prisma.problem.create({
         data: {
           exerciseTypeId,
@@ -42,7 +42,7 @@ describe("findSimilarProblems", () => {
           suggestedPacing: [],
           requiredAnswerSections: [],
           difficulty: Difficulty.EASY,
-          tags: [],
+          tags,
           uniquenessHash: hash,
           generatedByModel: "test",
           generationPromptVersionId: promptVersionId
@@ -53,7 +53,7 @@ describe("findSimilarProblems", () => {
       return p.id;
     }
 
-    await make("sim-near", "sim-hash-near", 0); // identical axis to query -> sim 1
+    await make("sim-near", "sim-hash-near", 0, ["concept-a"]); // identical axis to query -> sim 1
     await make("sim-far", "sim-hash-far", 5); // different axis -> sim 0
   });
 
@@ -65,6 +65,7 @@ describe("findSimilarProblems", () => {
   it("returns nearest first with correct similarity", async () => {
     const rows = await findSimilarProblems({ exerciseTypeId, embedding: axisVector(0), k: 5 });
     expect(rows[0].title).toBe("sim-near");
+    expect(rows[0].tags).toEqual(["concept-a"]);
     expect(rows[0].similarity).toBeGreaterThan(0.99);
     const far = rows.find((r) => r.title === "sim-far");
     expect(far?.similarity ?? 0).toBeLessThan(0.01);
