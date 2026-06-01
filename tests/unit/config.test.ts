@@ -69,4 +69,12 @@ describe("config: embedding & dedup", () => {
     expect(cfg.dedup.maxRetries).toBe(5);
     expect(cfg.dedup.neighborK).toBe(8);
   });
+
+  it("rejects out-of-bounds and non-integer dedup values", () => {
+    expect(() => parseConfig({ ...baseEnv, DEDUP_SIMILARITY_THRESHOLD: "1.5" })).toThrow();
+    expect(() => parseConfig({ ...baseEnv, DEDUP_SIMILARITY_THRESHOLD: "-0.1" })).toThrow();
+    expect(() => parseConfig({ ...baseEnv, DEDUP_MAX_RETRIES: "0" })).toThrow();
+    expect(() => parseConfig({ ...baseEnv, DEDUP_MAX_RETRIES: "2.5" })).toThrow();
+    expect(() => parseConfig({ ...baseEnv, DEDUP_NEIGHBOR_K: "0" })).toThrow();
+  });
 });
