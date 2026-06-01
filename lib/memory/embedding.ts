@@ -1,3 +1,6 @@
+import { getOpenAI } from "@/lib/openai/client";
+import { getConfig } from "@/lib/config";
+
 type EmbeddingTextInput = {
   title: string;
   userVisiblePrompt: string;
@@ -16,4 +19,20 @@ export function problemEmbeddingText(p: EmbeddingTextInput): string {
       ? "\n" + p.questions.map((q) => `${q.stimulus.trim()}\n${q.questionStem.trim()}`).join("\n")
       : "";
   return base + lsat;
+}
+
+export type Embedder = (text: string) => Promise<number[]>;
+
+// Returns the embedding vector, or null on any failure. Embedding must never
+// block a problem from being saved, so callers treat null as "skip the
+// semantic gate for this one".
+export async function embedText(text: string, embed?: Embedder): Promise<number[] | null> {
+  try {
+    if (embed) return await embed(text);
+    const cfg = getConfig();
+    const resp = await getOpenAI().embeddings.create({ model: cfg.embedding.model, input: text });
+    return resp.data[0].embedding;
+  } catch {
+    return null;
+  }
 }
