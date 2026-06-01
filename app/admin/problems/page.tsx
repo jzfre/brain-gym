@@ -23,9 +23,11 @@ export default async function AdminProblemsPage() {
     <main className="container mx-auto max-w-3xl space-y-4 py-8">
       <h1 className="text-3xl font-semibold tracking-tight">Recent problems</h1>
       <p className="text-sm text-muted-foreground">
-        Newest 50. Similarity is cosine distance to the closest prior problem at creation time;
-        higher means more similar. A near-dup flag means the retry budget was exhausted.
+        Newest 50. The score is the cosine similarity to the closest prior problem at creation
+        time (higher means more similar). A near-dup flag means the retry budget was exhausted and
+        the least-similar candidate was saved anyway.
       </p>
+      {rows.length === 0 ? <p className="text-muted-foreground">No problems yet.</p> : null}
       {rows.map((p) => (
         <Card key={p.id}>
           <CardHeader className="pb-2">
