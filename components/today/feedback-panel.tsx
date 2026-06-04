@@ -19,7 +19,12 @@ type Detail = {
     topFixes: string[];
     nextRep: string;
     strongAnswerSketch?: string | null;
-    dimensions: Array<{ dimension: string; score: number; rationale: string }>;
+    dimensions: Array<{
+      dimension: string;
+      score: number;
+      rationale: string;
+      exampleResponse?: string | null;
+    }>;
     errorPatternTags: string[];
     rawOutput?: { questions?: LsatQuestionResult[] } | null;
   } | null;
@@ -155,6 +160,14 @@ export function FeedbackPanel({ attemptId }: { attemptId: number }) {
                   <span className="font-mono text-sm">{d.score}</span>
                 </div>
                 <p className="mt-1 text-sm text-muted-foreground">{d.rationale}</p>
+                {d.exampleResponse ? (
+                  <div className="mt-2 rounded-md bg-muted/50 p-2">
+                    <p className="text-xs font-semibold uppercase text-muted-foreground">
+                      Example response
+                    </p>
+                    <p className="mt-1 whitespace-pre-wrap text-sm">{d.exampleResponse}</p>
+                  </div>
+                ) : null}
               </li>
             ))}
           </ul>

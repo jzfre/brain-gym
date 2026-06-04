@@ -157,12 +157,13 @@ model Evaluation {
 }
 
 model EvaluationDimension {
-  id           String     @id @default(uuid())
-  evaluationId String
-  evaluation   Evaluation @relation(fields: [evaluationId], references: [id], onDelete: Cascade)
-  dimension    String
-  score        Float
-  rationale    String
+  id              String     @id @default(uuid())
+  evaluationId    String
+  evaluation      Evaluation @relation(fields: [evaluationId], references: [id], onDelete: Cascade)
+  dimension       String
+  score           Float
+  rationale       String
+  exampleResponse String?
 }
 
 model ModelRun {

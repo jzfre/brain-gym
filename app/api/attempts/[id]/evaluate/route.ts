@@ -88,7 +88,13 @@ async function runEvaluation(attemptId: number): Promise<void> {
       });
       for (const d of e.dimensions) {
         await tx.evaluationDimension.create({
-          data: { evaluationId: row.id, dimension: d.name, score: d.score, rationale: d.rationale }
+          data: {
+            evaluationId: row.id,
+            dimension: d.name,
+            score: d.score,
+            rationale: d.rationale,
+            exampleResponse: d.exampleResponse ?? null
+          }
         });
       }
       await tx.attempt.update({ where: { id: attemptId }, data: { status: AttemptStatus.EVALUATED } });

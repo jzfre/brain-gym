@@ -4,7 +4,9 @@ Output (must validate against the provided JSON schema):
 
 - overallScore: 0-10, one decimal
 - shortDiagnosis: 1-2 sentences naming the single biggest gap
-- dimensions: one entry per rubric dimension, each with score, rationale (1-2 sentences), sharperVersion if applicable, missingItems if applicable
+- dimensions: one entry per rubric dimension, each with score, rationale (1-2 sentences), exampleResponse, sharperVersion if applicable, missingItems if applicable
+  - if the rubric includes "What would change my mind", grade it against the hidden answer key's mindChanger: did the user name a specific, observable disconfirming signal rather than a vague hedge?
+  - exampleResponse: 2-4 sentences showing what a strong answer for that dimension looks like for THIS problem — written in the user's voice as if it were their memo, grounded in the article and the hidden answer key, not generic advice
 - summary: 3-5 sentences total
 - topFixes: exactly 3 concrete fixes
 - rewriteSuggestions: { improvedClaim: string, missingAssumptions: string[] (2), missingTradeoffs: string[] (2), betterPhrasingForWeakEvidence: string[] }
