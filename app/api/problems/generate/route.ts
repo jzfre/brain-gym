@@ -10,6 +10,7 @@ import { loadActivePrompt } from "@/lib/prompts/registry";
 import { generateUniqueProblem } from "@/lib/memory/dedup";
 import { embedText, problemEmbeddingText } from "@/lib/memory/embedding";
 import { findSimilarProblems } from "@/lib/memory/similarity";
+import { completeJob, createJob, failJob } from "@/lib/generation/jobs";
 
 export const runtime = "nodejs";
 
@@ -26,6 +27,19 @@ export async function POST(req: Request) {
   }
   const { exerciseSlug, difficulty } = parsed.data;
 
+  // Generation (model call + dedup retries) can far exceed Cloudflare's 100s
+  // proxy limit, so we don't await it — same pattern as the evaluate route.
+  // The client polls GET /api/problems/generate/:jobId until the job settles.
+  const jobId = createJob();
+  void runGeneration(jobId, exerciseSlug, difficulty);
+  return NextResponse.json({ jobId }, { status: 202 });
+}
+
+async function runGeneration(
+  jobId: string,
+  exerciseSlug: ExerciseSlug,
+  difficulty: Difficulty
+): Promise<void> {
   try {
     const mode = getMode(exerciseSlug);
     const avoidanceHint = await loadAvoidanceHint({ exerciseSlug });
@@ -44,7 +58,7 @@ export async function POST(req: Request) {
       }
     });
 
-    const { problem, modelRunId } = outcome.result;
+    const { problem } = outcome.result;
     const hash = computeUniquenessHash({
       title: problem.title,
       promptText: problem.userVisiblePrompt,
@@ -107,9 +121,10 @@ export async function POST(req: Request) {
       return inserted;
     });
 
-    return NextResponse.json({ problemId: created.id, modelRunId });
+    completeJob(jobId, created.id);
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    return NextResponse.json({ error: "generation_failed", message }, { status: 502 });
+    console.error(`[generate] job ${jobId} failed:`, err);
+    failJob(jobId, message);
   }
 }
