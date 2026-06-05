@@ -59,6 +59,8 @@ export type EvaluationCommon = {
     name: string;
     score: number;
     rationale: string;
+    // Memo only: a concrete example of a strong response for this dimension.
+    exampleResponse?: string;
     sharperVersion: string | null;
     missingItems: string[] | null;
   }>;

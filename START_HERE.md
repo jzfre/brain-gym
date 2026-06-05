@@ -45,6 +45,7 @@ Core scoring dimensions:
 - Assumptions
 - Tradeoffs
 - Testability
+- What would change my mind
 
 ### 2. Technical Incident Response
 
@@ -96,6 +97,12 @@ Expected behavior:
 - `easy`: clearer signal, fewer distractors, simpler math, more direct question stems.
 - `medium`: realistic ambiguity, several plausible distractions, moderate numerical or logical traps.
 - `hard`: higher ambiguity, interacting causes, stronger distractors, harder tradeoffs, stricter scoring.
+
+For Memo Extraction specifically, difficulty controls where the thinking happens:
+
+- `easy` (25 min): the answers are stated in the article — a strong memo can mostly be assembled by extracting and reorganizing the text.
+- `medium` (35 min): the article provides raw material but the key answers are only implied — the user must form their own claim, assumptions, and tradeoffs.
+- `hard` (45 min): the article contains substantial irrelevant or distracting detail — the key findings must be the user's own and are not stated in the article.
 
 The UI should allow the user to choose difficulty before generating a problem. Store the selected difficulty with the problem so analytics can compare scores fairly.
 
@@ -306,11 +313,13 @@ The evaluator should score:
 - Assumptions
 - Tradeoffs
 - Testability
+- What would change my mind
 
 Feedback should include:
 
 - Overall score
 - Brief rationale by dimension
+- An example of a strong response per dimension
 - Top 3 fixes
 - Improved claim
 - 2 missing assumptions

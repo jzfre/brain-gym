@@ -33,7 +33,8 @@ const validProblem = {
       { name: "Evidence quality", maxScore: 10, description: "" },
       { name: "Assumptions", maxScore: 10, description: "" },
       { name: "Tradeoffs", maxScore: 10, description: "" },
-      { name: "Testability", maxScore: 10, description: "" }
+      { name: "Testability", maxScore: 10, description: "" },
+      { name: "What would change my mind", maxScore: 10, description: "" }
     ]
   },
   tags: ["budget", "municipal"],
@@ -50,34 +51,63 @@ describe("MemoGeneratedProblemSchema", () => {
     const bad = { ...validProblem, requiredAnswerSections: validProblem.requiredAnswerSections.slice(0, 3) };
     expect(() => MemoGeneratedProblemSchema.parse(bad)).toThrow();
   });
+
+  it("rejects a rubric without the What would change my mind dimension", () => {
+    const bad = { ...validProblem, rubric: { dimensions: validProblem.rubric.dimensions.slice(0, 5) } };
+    expect(() => MemoGeneratedProblemSchema.parse(bad)).toThrow();
+  });
 });
 
+const dimensionNames = [
+  "Claim clarity",
+  "Evidence quality",
+  "Assumptions",
+  "Tradeoffs",
+  "Testability",
+  "What would change my mind"
+];
+
+function makeEvaluation(names: string[]) {
+  return {
+    overallScore: 7.5,
+    shortDiagnosis: "Evidence is anecdotal.",
+    dimensions: names.map((n) => ({
+      name: n,
+      score: 7,
+      rationale: "ok",
+      exampleResponse: "A concrete strong answer for this dimension.",
+      sharperVersion: null,
+      missingItems: null
+    })),
+    summary: "Decent attempt overall.",
+    topFixes: ["a", "b", "c"],
+    rewriteSuggestions: {
+      improvedClaim: "x",
+      missingAssumptions: ["a1", "a2"],
+      missingTradeoffs: ["t1", "t2"],
+      betterPhrasingForWeakEvidence: ["e1"]
+    },
+    strongAnswerSketch: "...",
+    nextRep: "Practice prephrasing",
+    clarificationQuestion: null,
+    errorPatternTags: ["vague-claim"],
+    missClassifications: []
+  };
+}
+
 describe("MemoEvaluationSchema", () => {
-  it("accepts a valid evaluation", () => {
-    const ev = {
-      overallScore: 7.5,
-      shortDiagnosis: "Evidence is anecdotal.",
-      dimensions: ["Claim clarity", "Evidence quality", "Assumptions", "Tradeoffs", "Testability"].map((n) => ({
-        name: n,
-        score: 7,
-        rationale: "ok",
-        sharperVersion: null,
-        missingItems: null
-      })),
-      summary: "Decent attempt overall.",
-      topFixes: ["a", "b", "c"],
-      rewriteSuggestions: {
-        improvedClaim: "x",
-        missingAssumptions: ["a1", "a2"],
-        missingTradeoffs: ["t1", "t2"],
-        betterPhrasingForWeakEvidence: ["e1"]
-      },
-      strongAnswerSketch: "...",
-      nextRep: "Practice prephrasing",
-      clarificationQuestion: null,
-      errorPatternTags: ["vague-claim"],
-      missClassifications: []
-    };
-    expect(MemoEvaluationSchema.parse(ev)).toBeTruthy();
+  it("accepts a valid 6-dimension evaluation", () => {
+    expect(MemoEvaluationSchema.parse(makeEvaluation(dimensionNames))).toBeTruthy();
+  });
+
+  it("accepts a 5-dimension evaluation (problems generated before the mind-change dimension)", () => {
+    expect(MemoEvaluationSchema.parse(makeEvaluation(dimensionNames.slice(0, 5)))).toBeTruthy();
+  });
+
+  it("rejects a dimension without an example response", () => {
+    const ev = makeEvaluation(dimensionNames);
+    const { exampleResponse: _drop, ...rest } = ev.dimensions[0];
+    ev.dimensions[0] = rest as (typeof ev.dimensions)[number];
+    expect(() => MemoEvaluationSchema.parse(ev)).toThrow();
   });
 });

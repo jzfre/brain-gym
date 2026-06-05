@@ -37,7 +37,7 @@ export const MemoGeneratedProblemSchema = z.object({
     sharpestNextTest: z.string(),
     mindChanger: z.string()
   }),
-  rubric: z.object({ dimensions: z.array(RubricDimension).length(5) }),
+  rubric: z.object({ dimensions: z.array(RubricDimension).length(6) }),
   tags: z.array(z.string()).min(1).max(8),
   sourceCitations: z.array(SourceCitation),
   duplicateAvoidanceKey: z.string().min(3)
@@ -47,6 +47,7 @@ const EvalDimension = z.object({
   name: z.string(),
   score: z.number(),
   rationale: z.string(),
+  exampleResponse: z.string().min(5),
   sharperVersion: z.string().nullable(),
   missingItems: z.array(z.string()).nullable()
 });
@@ -54,7 +55,9 @@ const EvalDimension = z.object({
 export const MemoEvaluationSchema = z.object({
   overallScore: z.number().min(0).max(10),
   shortDiagnosis: z.string().min(5),
-  dimensions: z.array(EvalDimension).length(5),
+  // 6 for problems generated with the "What would change my mind" rubric
+  // dimension; 5 keeps evaluation working for problems generated before it.
+  dimensions: z.array(EvalDimension).min(5).max(6),
   summary: z.string().min(10),
   topFixes: z.array(z.string()).length(3),
   rewriteSuggestions: z.object({
