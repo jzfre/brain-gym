@@ -79,8 +79,8 @@ See `.env.example`. Required: `DATABASE_URL`, `OPENAI_API_KEY`, `OPENAI_MODEL`, 
 
 Optional (semantic dedup, with defaults): `EMBEDDING_MODEL` (`text-embedding-3-small`),
 `DEDUP_SIMILARITY_THRESHOLD` (`0.85`), `DEDUP_MAX_RETRIES` (`3`), `DEDUP_NEIGHBOR_K` (`5`).
-Also optional: `OPENAI_TIMEOUT_MS` (`1200000`, i.e. 20 min per model call — raise it if
-high reasoning effort regularly times out).
+Also optional: `OPENAI_TIMEOUT_MS` (`1200000`, i.e. 20 min per attempt; the client makes
+up to 2 attempts per model call — raise it if high reasoning effort regularly times out).
 
 ## Structure
 

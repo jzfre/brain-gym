@@ -17,9 +17,11 @@ const EXERCISES = [
 ] as const;
 
 const POLL_INTERVAL_MS = 3000;
-// Generous: a generation can legitimately run for OPENAI_TIMEOUT_MS plus the
-// SDK's internal retries; the job keeps running server-side past this anyway.
-const POLL_DEADLINE_MS = 30 * 60 * 1000;
+// Client-side give-up point, NOT the server's limit: a healthy generation can
+// run up to OPENAI_TIMEOUT_MS × 2 SDK attempts (~40 min) per model call, and
+// the dedup loop may issue several calls. The job keeps running server-side
+// past this deadline; a finished problem lands in Admin → Problems.
+const POLL_DEADLINE_MS = 45 * 60 * 1000;
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -46,7 +48,10 @@ async function pollForProblem(jobId: string): Promise<string> {
     if (d.status === "succeeded" && d.problemId) return d.problemId;
     if (d.status === "failed") throw new Error(d.error ?? "generation failed");
   }
-  throw new Error("Timed out waiting for generation — check History, it may still appear.");
+  throw new Error(
+    "Still generating after 45 minutes — the server keeps working and a finished problem " +
+      "will appear under Admin → Problems. Retrying now would start a second generation."
+  );
 }
 
 type ProblemPayload = {
