@@ -31,13 +31,21 @@ describe("generation job store", () => {
     expect(getJob("nope")).toBeUndefined();
   });
 
-  it("prunes jobs older than 30 minutes on insert", () => {
+  it("prunes settled jobs after 30 minutes but keeps pending ones", () => {
     const t0 = 1_000_000;
-    const old = createJob(t0);
-    const fresh = createJob(t0 + 29 * 60 * 1000);
+    const settled = createJob(t0);
+    completeJob(settled, "prob-1");
+    const pending = createJob(t0);
     createJob(t0 + 31 * 60 * 1000); // triggers prune relative to t0
-    expect(getJob(old)).toBeUndefined();
-    expect(getJob(fresh)).toBeDefined();
+    expect(getJob(settled)).toBeUndefined();
+    expect(getJob(pending)).toBeDefined(); // still inside the 2h pending leash
+  });
+
+  it("prunes pending jobs after 2 hours", () => {
+    const t0 = 1_000_000;
+    const orphan = createJob(t0);
+    createJob(t0 + 2 * 60 * 60 * 1000 + 1); // triggers prune relative to t0
+    expect(getJob(orphan)).toBeUndefined();
   });
 
   it("issues unique ids", () => {

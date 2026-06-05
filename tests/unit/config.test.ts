@@ -47,6 +47,21 @@ const baseEnv = {
   APP_PASSWORD: "pw"
 };
 
+describe("config: openai timeout", () => {
+  it("defaults to 20 minutes", () => {
+    expect(parseConfig(baseEnv).openai.timeoutMs).toBe(1_200_000);
+  });
+
+  it("reads an override and coerces it", () => {
+    expect(parseConfig({ ...baseEnv, OPENAI_TIMEOUT_MS: "300000" }).openai.timeoutMs).toBe(300_000);
+  });
+
+  it("rejects sub-second and non-integer values", () => {
+    expect(() => parseConfig({ ...baseEnv, OPENAI_TIMEOUT_MS: "999" })).toThrow();
+    expect(() => parseConfig({ ...baseEnv, OPENAI_TIMEOUT_MS: "1.5e4.2" })).toThrow();
+  });
+});
+
 describe("config: embedding & dedup", () => {
   it("applies defaults when not set", () => {
     const cfg = parseConfig(baseEnv);
