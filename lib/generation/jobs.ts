@@ -14,13 +14,19 @@ export type GenerationJob = {
 // by POST is visible to the polling GET. A container restart loses the map,
 // but it also kills the in-flight generation itself — the client treats an
 // unknown job id as "retry".
-const MAX_AGE_MS = 30 * 60 * 1000;
+// Settled jobs are kept briefly for late polls; pending jobs get a much longer
+// leash because a generation can legitimately run for the OpenAI timeout times
+// the SDK's internal retries — pruning a pending job mid-run would make the
+// client report a bogus "server restarted" and orphan the eventual result.
+const SETTLED_MAX_AGE_MS = 30 * 60 * 1000;
+const PENDING_MAX_AGE_MS = 2 * 60 * 60 * 1000;
 
 const jobs = new Map<string, GenerationJob>();
 
 function prune(now: number): void {
   for (const [id, job] of jobs) {
-    if (now - job.createdAt > MAX_AGE_MS) jobs.delete(id);
+    const maxAge = job.status === "pending" ? PENDING_MAX_AGE_MS : SETTLED_MAX_AGE_MS;
+    if (now - job.createdAt > maxAge) jobs.delete(id);
   }
 }
 

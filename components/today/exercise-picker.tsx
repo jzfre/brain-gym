@@ -17,7 +17,9 @@ const EXERCISES = [
 ] as const;
 
 const POLL_INTERVAL_MS = 3000;
-const POLL_DEADLINE_MS = 15 * 60 * 1000;
+// Generous: a generation can legitimately run for OPENAI_TIMEOUT_MS plus the
+// SDK's internal retries; the job keeps running server-side past this anyway.
+const POLL_DEADLINE_MS = 30 * 60 * 1000;
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
