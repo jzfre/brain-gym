@@ -104,6 +104,12 @@ For Memo Extraction specifically, difficulty controls where the thinking happens
 - `medium` (35 min): the article provides raw material but the key answers are only implied — the user must form their own claim, assumptions, and tradeoffs.
 - `hard` (45 min): the article contains substantial irrelevant or distracting detail — the key findings must be the user's own and are not stated in the article.
 
+For LSAT Logical Reasoning, difficulty controls volume and question toughness (5 min/question):
+
+- `easy` (5 questions, 25 min): warm-up — common question types, compact stimuli, distractors that fail on a careful read.
+- `medium` (9 questions, 45 min): full session — wide type rotation, denser stimuli, attractive distractors.
+- `hard` (9 questions, 45 min): full session of genuinely hard items — Parallel reasoning/flaw, Principle, formal-logic chains, quantifier/modal traps, near-miss distractors.
+
 The UI should allow the user to choose difficulty before generating a problem. Store the selected difficulty with the problem so analytics can compare scores fairly.
 
 Default difficulty should be `medium`.

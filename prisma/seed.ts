@@ -1,9 +1,14 @@
 import { PrismaClient, ExerciseSlug, PromptRole } from "@prisma/client";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { config } from "dotenv";
 
-config({ path: ".env" });
+// dotenv is a dev convenience for `pnpm db:seed` on a host; the production
+// container has no dotenv (env comes from compose) — keep the import optional
+// so the same script seeds in both places.
+try {
+  const { config } = await import("dotenv");
+  config({ path: ".env" });
+} catch {}
 
 const prisma = new PrismaClient();
 const PROMPTS_DIR = join(process.cwd(), "prompts");
