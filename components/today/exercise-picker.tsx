@@ -16,6 +16,37 @@ const EXERCISES = [
   { slug: "LSAT_LOGICAL_REASONING", name: "LSAT" }
 ] as const;
 
+const POLL_INTERVAL_MS = 3000;
+const POLL_DEADLINE_MS = 15 * 60 * 1000;
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+// Generation runs server-side as a background job (it can take minutes —
+// far past Cloudflare's 100s proxy limit), so we poll the job's status with
+// cheap sub-second requests until it settles. Same cadence as feedback-panel.
+async function pollForProblem(jobId: string): Promise<string> {
+  const deadline = Date.now() + POLL_DEADLINE_MS;
+  while (Date.now() < deadline) {
+    await sleep(POLL_INTERVAL_MS);
+    let d: { status?: string; problemId?: string | null; error?: string | null };
+    try {
+      const r = await fetch(`/api/problems/generate/${jobId}`);
+      if (r.status === 404) {
+        throw new Error("Generation was lost (server restarted) — please retry.");
+      }
+      d = await r.json();
+    } catch (e) {
+      if (e instanceof Error && e.message.startsWith("Generation was lost")) throw e;
+      continue; // transient network error — keep polling
+    }
+    if (d.status === "succeeded" && d.problemId) return d.problemId;
+    if (d.status === "failed") throw new Error(d.error ?? "generation failed");
+  }
+  throw new Error("Timed out waiting for generation — check History, it may still appear.");
+}
+
 type ProblemPayload = {
   id: string;
   userVisiblePayload: {
@@ -45,11 +76,12 @@ export function ExercisePicker() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ exerciseSlug: slug, difficulty })
       });
-      if (!res.ok) {
+      if (res.status !== 202) {
         const msg = await res.json().catch(() => ({}));
         throw new Error(msg.message ?? `HTTP ${res.status}`);
       }
-      const { problemId } = await res.json();
+      const { jobId } = await res.json();
+      const problemId = await pollForProblem(jobId);
       const probRes = await fetch(`/api/problems/${problemId}`);
       const prob = await probRes.json();
       setProblem({ id: prob.id, userVisiblePayload: prob.userVisiblePayload });
