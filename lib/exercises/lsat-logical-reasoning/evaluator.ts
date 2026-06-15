@@ -81,6 +81,7 @@ export async function evaluateLsatAttempt(input: EvaluateInput): Promise<Evaluat
     reasoningEffort: cfg.openai.reasoningEffort,
     schema: LsatEvaluationSchema,
     schemaName: "LsatEvaluation",
+    timeoutMs: cfg.openai.evalTimeoutMs,
     input: [
       { role: "system", content: base.content },
       { role: "system", content: ev.content },

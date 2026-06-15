@@ -32,6 +32,7 @@ export async function evaluateMemoAttempt(input: EvaluateInput): Promise<Evaluat
     reasoningEffort: cfg.openai.reasoningEffort,
     schema: MemoEvaluationSchema,
     schemaName: "MemoEvaluation",
+    timeoutMs: cfg.openai.evalTimeoutMs,
     input: [
       { role: "system", content: base.content },
       { role: "system", content: ev.content },

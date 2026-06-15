@@ -62,6 +62,23 @@ describe("config: openai timeout", () => {
   });
 });
 
+describe("config: openai eval timeout", () => {
+  it("defaults to 5 minutes", () => {
+    expect(parseConfig(baseEnv).openai.evalTimeoutMs).toBe(300_000);
+  });
+
+  it("reads an override and coerces it", () => {
+    expect(parseConfig({ ...baseEnv, OPENAI_EVAL_TIMEOUT_MS: "120000" }).openai.evalTimeoutMs).toBe(
+      120_000
+    );
+  });
+
+  it("rejects sub-second and non-integer values", () => {
+    expect(() => parseConfig({ ...baseEnv, OPENAI_EVAL_TIMEOUT_MS: "999" })).toThrow();
+    expect(() => parseConfig({ ...baseEnv, OPENAI_EVAL_TIMEOUT_MS: "1.5e4.2" })).toThrow();
+  });
+});
+
 describe("config: embedding & dedup", () => {
   it("applies defaults when not set", () => {
     const cfg = parseConfig(baseEnv);

@@ -32,6 +32,7 @@ export async function evaluateIncidentAttempt(input: EvaluateInput): Promise<Eva
     reasoningEffort: cfg.openai.reasoningEffort,
     schema: IncidentEvaluationSchema,
     schemaName: "IncidentEvaluation",
+    timeoutMs: cfg.openai.evalTimeoutMs,
     input: [
       { role: "system", content: base.content },
       { role: "system", content: ev.content },

@@ -40,6 +40,46 @@ describe("runStructured", () => {
     expect(result.modelRunId).toBe("run-1");
   });
 
+  it("passes a per-request timeout to responses.parse when timeoutMs is set", async () => {
+    const parse = vi.fn(
+      async (_req: Record<string, unknown>, _opts?: { timeout?: number }) => ({
+        output_parsed: { title: "hi", score: 7 },
+        usage: {}
+      })
+    );
+    const fakeClient = { responses: { parse } };
+    await runStructured({
+      purpose: ModelRunPurpose.EVALUATE_ATTEMPT,
+      model: "gpt-5.5",
+      input: "x",
+      schema: Schema,
+      schemaName: "demo",
+      timeoutMs: 300_000,
+      client: fakeClient as never
+    });
+    expect(parse).toHaveBeenCalledTimes(1);
+    expect(parse.mock.calls[0][1]).toEqual({ timeout: 300_000 });
+  });
+
+  it("omits per-request options when timeoutMs is not set", async () => {
+    const parse = vi.fn(
+      async (_req: Record<string, unknown>, _opts?: { timeout?: number }) => ({
+        output_parsed: { title: "hi", score: 7 },
+        usage: {}
+      })
+    );
+    const fakeClient = { responses: { parse } };
+    await runStructured({
+      purpose: ModelRunPurpose.GENERATE_PROBLEM,
+      model: "gpt-5.5",
+      input: "x",
+      schema: Schema,
+      schemaName: "demo",
+      client: fakeClient as never
+    });
+    expect(parse.mock.calls[0][1]).toBeUndefined();
+  });
+
   it("throws and logs error when schema fails", async () => {
     const fakeClient = {
       responses: {
