@@ -7,6 +7,10 @@ const EnvSchema = z.object({
   OPENAI_REASONING_EFFORT: z.enum(["minimal", "low", "medium", "high"]).default("medium"),
   // High reasoning effort + web_search can exceed the SDK's 10-minute default.
   OPENAI_TIMEOUT_MS: z.coerce.number().int().min(1000).default(1_200_000),
+  // Evaluations are pure reasoning (no web_search) and finish in 1-2 min, so a
+  // tight per-attempt timeout lets a stalled socket abort and retry quickly
+  // instead of hanging for the full generation ceiling. See lib/openai/client.ts.
+  OPENAI_EVAL_TIMEOUT_MS: z.coerce.number().int().min(1000).default(300_000),
   LOCAL_USER_ID: z.string().uuid("LOCAL_USER_ID must be a UUID"),
   APP_PASSWORD: z.string().min(1, "APP_PASSWORD is required"),
   EMBEDDING_MODEL: z.string().min(1).default("text-embedding-3-small"),
@@ -24,6 +28,7 @@ export type AppConfig = {
     model: string;
     reasoningEffort: "minimal" | "low" | "medium" | "high";
     timeoutMs: number;
+    evalTimeoutMs: number;
   };
   embedding: {
     model: string;
@@ -50,7 +55,8 @@ export function parseConfig(env: NodeJS.ProcessEnv | Record<string, string | und
       apiKey: v.OPENAI_API_KEY,
       model: v.OPENAI_MODEL,
       reasoningEffort: v.OPENAI_REASONING_EFFORT,
-      timeoutMs: v.OPENAI_TIMEOUT_MS
+      timeoutMs: v.OPENAI_TIMEOUT_MS,
+      evalTimeoutMs: v.OPENAI_EVAL_TIMEOUT_MS
     },
     embedding: { model: v.EMBEDDING_MODEL },
     dedup: {

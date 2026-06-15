@@ -16,6 +16,9 @@ export type RunStructuredArgs<S extends ZodType> = {
   reasoningEffort?: "minimal" | "low" | "medium" | "high";
   tools?: WebSearchTool[];
   client?: Pick<OpenAI, "responses">;
+  // Per-request timeout (ms). Overrides the client-level default so callers can
+  // pick a tighter ceiling — e.g. evaluations use a shorter one than generation.
+  timeoutMs?: number;
 };
 
 export type RunStructuredResult<S extends ZodType> = {
@@ -48,18 +51,24 @@ export async function runStructured<S extends ZodType>(
   try {
     const resp = await (
       client.responses as unknown as {
-        parse: (req: Record<string, unknown>) => Promise<{
+        parse: (
+          req: Record<string, unknown>,
+          options?: { timeout?: number }
+        ) => Promise<{
           output_parsed: unknown;
           usage?: unknown;
         }>;
       }
-    ).parse({
-      model: args.model,
-      input: args.input,
-      text: { format: zodTextFormat(args.schema, args.schemaName) },
-      tools: args.tools,
-      reasoning: args.reasoningEffort ? { effort: args.reasoningEffort } : undefined
-    });
+    ).parse(
+      {
+        model: args.model,
+        input: args.input,
+        text: { format: zodTextFormat(args.schema, args.schemaName) },
+        tools: args.tools,
+        reasoning: args.reasoningEffort ? { effort: args.reasoningEffort } : undefined
+      },
+      args.timeoutMs ? { timeout: args.timeoutMs } : undefined
+    );
 
     const parsed = args.schema.parse(resp.output_parsed) as z.infer<S>;
 

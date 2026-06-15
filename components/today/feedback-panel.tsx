@@ -30,15 +30,29 @@ type Detail = {
   } | null;
 };
 
+const POLL_INTERVAL_MS = 3000;
+// After this, reassure the user it's safe to leave (eval keeps running server-side).
+const SLOW_NOTICE_MS = 90 * 1000;
+// Client give-up point, NOT the server's limit. The server's worst case is the
+// eval timeout × 2 SDK attempts (~10 min); we wait comfortably past that so a
+// result almost always lands here. Past it we stop auto-polling but the eval
+// keeps running and shows up in History.
+const POLL_DEADLINE_MS = 12 * 60 * 1000;
+
 export function FeedbackPanel({ attemptId }: { attemptId: number }) {
   const [data, setData] = useState<Detail | null>(null);
   const [failed, setFailed] = useState(false);
-  // Bumped on retry to restart the polling effect.
+  const [slow, setSlow] = useState(false);
+  const [timedOut, setTimedOut] = useState(false);
+  // Bumped on retry / re-check to restart the polling effect.
   const [attempt, setAttempt] = useState(0);
 
   useEffect(() => {
     let active = true;
     let timer: ReturnType<typeof setTimeout> | undefined;
+    const startedAt = Date.now();
+    setSlow(false);
+    setTimedOut(false);
 
     async function poll() {
       try {
@@ -54,7 +68,14 @@ export function FeedbackPanel({ attemptId }: { attemptId: number }) {
       } catch {
         // transient (e.g. the request was cut) — keep polling
       }
-      if (active) timer = setTimeout(poll, 3000);
+      if (!active) return;
+      const elapsed = Date.now() - startedAt;
+      if (elapsed >= POLL_DEADLINE_MS) {
+        setTimedOut(true);
+        return;
+      }
+      if (elapsed >= SLOW_NOTICE_MS) setSlow(true);
+      timer = setTimeout(poll, POLL_INTERVAL_MS);
     }
 
     poll();
@@ -68,6 +89,14 @@ export function FeedbackPanel({ attemptId }: { attemptId: number }) {
     setFailed(false);
     setData(null);
     await fetch(`/api/attempts/${attemptId}/evaluate`, { method: "POST" }).catch(() => {});
+    setAttempt((n) => n + 1);
+  }
+
+  // Re-check after the deadline WITHOUT kicking off a second evaluation — the
+  // first one is still running server-side; we just resume polling for it.
+  function checkAgain() {
+    setTimedOut(false);
+    setSlow(false);
     setAttempt((n) => n + 1);
   }
 
@@ -93,12 +122,36 @@ export function FeedbackPanel({ attemptId }: { attemptId: number }) {
     );
   }
 
+  if (timedOut) {
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle>Still evaluating</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <p className="text-sm text-muted-foreground">
+            This is taking longer than usual. Your answer is saved (attempt #{attemptId}) and the
+            evaluation keeps running on the server — it’ll appear in History when it finishes. You can
+            safely leave this page.
+          </p>
+          <div className="flex gap-2">
+            <Button onClick={checkAgain}>Check again</Button>
+            <Button asChild variant="outline">
+              <Link href="/history">History</Link>
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
+
   if (!data || !data.evaluation) {
     return (
       <Card>
         <CardContent className="py-10 text-center text-sm text-muted-foreground">
-          Evaluating your answer… this can take up to a minute or two. You can leave this page — the
-          result is saved and will show up in History.
+          {slow
+            ? "Still working — this is taking longer than usual. Your answer is saved; you can safely leave this page and the result will show up in History."
+            : "Evaluating your answer… this usually takes a minute or two. You can leave this page — the result is saved and will show up in History."}
         </CardContent>
       </Card>
     );
