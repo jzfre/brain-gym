@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { SESSION_COOKIE, sessionTokenFor, timingSafeEqualStr } from "@/lib/auth";
+import { SESSION_COOKIE, SESSION_MAX_AGE_SEC, verifySessionToken } from "@/lib/auth";
 
 const PUBLIC_PREFIXES = ["/login", "/api/auth/login", "/api/auth/logout"];
 
@@ -18,9 +18,9 @@ export async function middleware(req: NextRequest) {
   }
 
   const cookie = req.cookies.get(SESSION_COOKIE)?.value ?? "";
-  const password = process.env.APP_PASSWORD ?? "";
-  const expected = password ? await sessionTokenFor(password) : "";
-  if (!expected || !timingSafeEqualStr(cookie, expected)) {
+  const secret = process.env.SESSION_SECRET ?? "";
+  const ok = secret !== "" && (await verifySessionToken(cookie, secret, SESSION_MAX_AGE_SEC));
+  if (!ok) {
     if (pathname.startsWith("/api/")) {
       return NextResponse.json({ error: "unauthorized" }, { status: 401 });
     }

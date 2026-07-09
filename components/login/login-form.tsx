@@ -6,12 +6,13 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { safeNextPath } from "@/lib/redirect";
 
 export function LoginForm() {
   const params = useSearchParams();
-  const rawNext = params.get("next") ?? "/today";
-  // Only allow same-origin relative paths
-  const next = rawNext.startsWith("/") && !rawNext.startsWith("//") ? rawNext : "/today";
+  // Resolve to a same-origin relative path only (blocks //host, /\host, absolute
+  // URLs, and control chars — see lib/redirect.ts). Read the origin at submit time.
+  const rawNext = params.get("next");
 
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -35,7 +36,7 @@ export function LoginForm() {
     }
     // Hard navigation: forces a fresh server render so the cookie is honored
     // and the layout/middleware see the authenticated state from scratch.
-    window.location.assign(next);
+    window.location.assign(safeNextPath(rawNext, window.location.origin));
   }
 
   return (

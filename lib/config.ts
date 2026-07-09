@@ -13,6 +13,10 @@ const EnvSchema = z.object({
   OPENAI_EVAL_TIMEOUT_MS: z.coerce.number().int().min(1000).default(300_000),
   LOCAL_USER_ID: z.string().uuid("LOCAL_USER_ID must be a UUID"),
   APP_PASSWORD: z.string().min(1, "APP_PASSWORD is required"),
+  // Server-only secret that signs the session cookie. Must NOT equal the login
+  // password: the cookie is an HMAC over this value, so it never reveals
+  // APP_PASSWORD, and rotating it revokes all sessions. See lib/auth.ts.
+  SESSION_SECRET: z.string().min(32, "SESSION_SECRET must be at least 32 characters"),
   EMBEDDING_MODEL: z.string().min(1).default("text-embedding-3-small"),
   DEDUP_SIMILARITY_THRESHOLD: z.coerce.number().min(0).max(1).default(0.85),
   DEDUP_MAX_RETRIES: z.coerce.number().int().min(1).default(3),
@@ -23,6 +27,7 @@ export type AppConfig = {
   databaseUrl: string;
   localUserId: string;
   appPassword: string;
+  sessionSecret: string;
   openai: {
     apiKey: string;
     model: string;
@@ -51,6 +56,7 @@ export function parseConfig(env: NodeJS.ProcessEnv | Record<string, string | und
     databaseUrl: v.DATABASE_URL,
     localUserId: v.LOCAL_USER_ID,
     appPassword: v.APP_PASSWORD,
+    sessionSecret: v.SESSION_SECRET,
     openai: {
       apiKey: v.OPENAI_API_KEY,
       model: v.OPENAI_MODEL,

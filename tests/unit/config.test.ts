@@ -9,7 +9,8 @@ describe("parseConfig", () => {
       OPENAI_MODEL: "gpt-5.5",
       OPENAI_REASONING_EFFORT: "medium",
       LOCAL_USER_ID: "00000000-0000-0000-0000-000000000001",
-      APP_PASSWORD: "test-password"
+      APP_PASSWORD: "test-password",
+      SESSION_SECRET: "0123456789abcdef0123456789abcdef"
     });
     expect(cfg.openai.model).toBe("gpt-5.5");
     expect(cfg.localUserId).toBe("00000000-0000-0000-0000-000000000001");
@@ -22,7 +23,8 @@ describe("parseConfig", () => {
         OPENAI_MODEL: "gpt-5.5",
         OPENAI_REASONING_EFFORT: "medium",
         LOCAL_USER_ID: "00000000-0000-0000-0000-000000000001",
-      APP_PASSWORD: "test-password"
+      APP_PASSWORD: "test-password",
+      SESSION_SECRET: "0123456789abcdef0123456789abcdef"
       } as Record<string, string>)
     ).toThrow(/OPENAI_API_KEY/);
   });
@@ -33,19 +35,38 @@ describe("parseConfig", () => {
       OPENAI_API_KEY: "sk-test",
       OPENAI_MODEL: "gpt-5.5",
       LOCAL_USER_ID: "00000000-0000-0000-0000-000000000001",
-      APP_PASSWORD: "test-password"
+      APP_PASSWORD: "test-password",
+      SESSION_SECRET: "0123456789abcdef0123456789abcdef"
     });
     expect(cfg.openai.reasoningEffort).toBe("medium");
   });
 });
+
+const VALID_SECRET = "0123456789abcdef0123456789abcdef"; // 32 chars
 
 const baseEnv = {
   DATABASE_URL: "postgresql://brain:brain@localhost:5438/brain_gym?schema=public",
   OPENAI_API_KEY: "sk-test",
   OPENAI_MODEL: "gpt-5.5",
   LOCAL_USER_ID: "00000000-0000-0000-0000-000000000001",
-  APP_PASSWORD: "pw"
+  APP_PASSWORD: "pw",
+  SESSION_SECRET: VALID_SECRET
 };
+
+describe("config: session secret", () => {
+  it("exposes a valid SESSION_SECRET", () => {
+    expect(parseConfig(baseEnv).sessionSecret).toBe(VALID_SECRET);
+  });
+
+  it("throws when SESSION_SECRET is missing", () => {
+    const { SESSION_SECRET: _omit, ...withoutSecret } = baseEnv;
+    expect(() => parseConfig(withoutSecret)).toThrow(/SESSION_SECRET/);
+  });
+
+  it("throws when SESSION_SECRET is too short", () => {
+    expect(() => parseConfig({ ...baseEnv, SESSION_SECRET: "too-short" })).toThrow(/SESSION_SECRET/);
+  });
+});
 
 describe("config: openai timeout", () => {
   it("defaults to 20 minutes", () => {
