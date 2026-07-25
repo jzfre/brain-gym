@@ -8,6 +8,7 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { AnswerEditor } from "./answer-editor";
 import { LsatSetRunner } from "./lsat-set-runner";
+import { ReadyDialog } from "./ready-dialog";
 import type { LsatPublicQuestion } from "@/lib/exercises/types";
 
 const EXERCISES = [
@@ -71,12 +72,14 @@ export function ExercisePicker() {
   const [difficulty, setDifficulty] = useState<"EASY" | "MEDIUM" | "HARD">("MEDIUM");
   const [generating, setGenerating] = useState(false);
   const [problem, setProblem] = useState<ProblemPayload | null>(null);
+  const [exerciseStarted, setExerciseStarted] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   async function handleGenerate() {
     setGenerating(true);
     setError(null);
     setProblem(null);
+    setExerciseStarted(false);
     try {
       const res = await fetch("/api/problems/generate", {
         method: "POST",
@@ -97,6 +100,16 @@ export function ExercisePicker() {
     } finally {
       setGenerating(false);
     }
+  }
+
+  if (problem && !exerciseStarted) {
+    return (
+      <ReadyDialog
+        title={problem.userVisiblePayload.title}
+        minutes={problem.userVisiblePayload.timeboxMinutes}
+        onStart={() => setExerciseStarted(true)}
+      />
+    );
   }
 
   if (problem) {

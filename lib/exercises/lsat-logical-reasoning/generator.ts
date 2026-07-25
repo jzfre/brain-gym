@@ -4,6 +4,7 @@ import { runStructured } from "@/lib/openai/run-model";
 import { getConfig } from "@/lib/config";
 import type { GenerateInput, GenerateResult, LsatPublicQuestion } from "@/lib/exercises/types";
 import { LsatGeneratedProblemSchema } from "./schemas";
+import { shuffleLsatQuestion } from "./shuffle";
 
 // Questions per set: easy is a short warm-up session, medium and hard are full
 // sessions — hard keeps the same volume but the questions themselves are much
@@ -66,17 +67,19 @@ export async function generateLsatProblem(input: GenerateInput): Promise<Generat
   });
 
   const p = result.parsed;
+  const shuffledQuestions = p.questions.map((question) => shuffleLsatQuestion(question));
 
   // Split each generated question into the public part (shown to the user) and
-  // the hidden answer key.
-  const questions: LsatPublicQuestion[] = p.questions.map((q) => ({
+  // the hidden answer key. Answer order is randomized in application code so
+  // correctness never depends on the model distributing answer letters well.
+  const questions: LsatPublicQuestion[] = shuffledQuestions.map((q) => ({
     number: q.number,
     stimulus: q.stimulus,
     questionStem: q.questionStem,
     choices: q.choices,
     questionType: q.questionType
   }));
-  const answers = p.questions.map((q) => ({
+  const answers = shuffledQuestions.map((q) => ({
     number: q.number,
     correctChoice: q.correctChoice,
     explanation: q.explanation,
