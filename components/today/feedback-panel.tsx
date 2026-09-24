@@ -2,14 +2,17 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Button } from "@/components/ui/button";
 import { LsatSetFeedback } from "./lsat-set-feedback";
+import { evaluationState } from "@/lib/evaluation/state";
 import type { LsatPublicQuestion, LsatQuestionResult } from "@/lib/exercises/types";
 
 type Detail = {
+  evaluating?: boolean;
   attempt: { id: number; responseText: string; status: string };
   problem?: { userVisiblePayload?: { questions?: LsatPublicQuestion[] } };
   evaluation: {
@@ -40,9 +43,20 @@ const SLOW_NOTICE_MS = 5 * 60 * 1000;
 // stop auto-polling but the eval keeps running and shows up in History.
 const POLL_DEADLINE_MS = 25 * 60 * 1000;
 
-export function FeedbackPanel({ attemptId }: { attemptId: number }) {
+export function FeedbackPanel({
+  attemptId,
+  refreshOnEvaluated = false
+}: {
+  attemptId: number;
+  // On a server-rendered page (History detail), re-render it once the result
+  // lands so the page shows its own evaluated view instead of this one.
+  refreshOnEvaluated?: boolean;
+}) {
+  const router = useRouter();
   const [data, setData] = useState<Detail | null>(null);
   const [failed, setFailed] = useState(false);
+  // No evaluation, not failed, and nothing running it — a restart killed it.
+  const [interrupted, setInterrupted] = useState(false);
   const [slow, setSlow] = useState(false);
   const [timedOut, setTimedOut] = useState(false);
   // Bumped on retry / re-check to restart the polling effect.
@@ -61,9 +75,18 @@ export function FeedbackPanel({ attemptId }: { attemptId: number }) {
         const d = (await r.json()) as Detail;
         if (!active) return;
         setData(d);
-        if (d.evaluation) return; // evaluation landed — stop polling
-        if (d.attempt?.status === "EVAL_FAILED") {
+        const state = evaluationState(d);
+        if (state === "evaluated") {
+          // evaluation landed — stop polling
+          if (refreshOnEvaluated) router.refresh();
+          return;
+        }
+        if (state === "failed") {
           setFailed(true);
+          return;
+        }
+        if (state === "interrupted") {
+          setInterrupted(true);
           return;
         }
       } catch {
@@ -84,10 +107,11 @@ export function FeedbackPanel({ attemptId }: { attemptId: number }) {
       active = false;
       if (timer) clearTimeout(timer);
     };
-  }, [attemptId, attempt]);
+  }, [attemptId, attempt, refreshOnEvaluated, router]);
 
   async function retry() {
     setFailed(false);
+    setInterrupted(false);
     setData(null);
     await fetch(`/api/attempts/${attemptId}/evaluate`, { method: "POST" }).catch(() => {});
     setAttempt((n) => n + 1);
@@ -101,16 +125,17 @@ export function FeedbackPanel({ attemptId }: { attemptId: number }) {
     setAttempt((n) => n + 1);
   }
 
-  if (failed) {
+  if (failed || interrupted) {
     return (
       <Card>
         <CardHeader>
-          <CardTitle>Evaluation failed</CardTitle>
+          <CardTitle>{failed ? "Evaluation failed" : "Evaluation was interrupted"}</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
           <p className="text-sm text-muted-foreground">
-            Your answer was saved (attempt #{attemptId}). The evaluation didn’t complete — you can
-            retry it now or later from History.
+            {failed
+              ? `Your answer was saved (attempt #${attemptId}). The evaluation didn’t complete — you can retry it now or later from History.`
+              : `Your answer is saved (attempt #${attemptId}), but its evaluation stopped before finishing — usually because the server restarted. Retry to run it again.`}
           </p>
           <div className="flex gap-2">
             <Button onClick={retry}>Retry evaluation</Button>

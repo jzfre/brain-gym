@@ -4,13 +4,10 @@ import { prisma } from "@/lib/db/client";
 import { getMode } from "@/lib/exercises/registry";
 import { getConfig } from "@/lib/config";
 import { loadActivePrompt } from "@/lib/prompts/registry";
+import { clearInFlight, isInFlight, markInFlight } from "@/lib/evaluation/in-flight";
 import type { GeneratedProblemCommon } from "@/lib/exercises/types";
 
 export const runtime = "nodejs";
-
-// Attempts whose evaluation is running in this process. The client only triggers
-// once, but this guards against a duplicate POST starting a second model call.
-const inFlight = new Set<number>();
 
 export async function POST(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -27,16 +24,30 @@ export async function POST(_req: Request, { params }: { params: Promise<{ id: st
   if (existing.evaluation) {
     return NextResponse.json({ status: "evaluated", evaluationId: existing.evaluation.id });
   }
-  if (inFlight.has(attemptId)) {
+  if (isInFlight(attemptId)) {
     return NextResponse.json({ status: "evaluating" }, { status: 202 });
+  }
+  markInFlight(attemptId);
+
+  // A retry after a failure: clear the stale EVAL_FAILED first, or the client's
+  // next poll reads it as this run's result and shows "failed" straight away.
+  if (existing.status === AttemptStatus.EVAL_FAILED) {
+    try {
+      await prisma.attempt.update({
+        where: { id: attemptId },
+        data: { status: AttemptStatus.SUBMITTED }
+      });
+    } catch {
+      clearInFlight(attemptId);
+      return NextResponse.json({ error: "retry_failed" }, { status: 500 });
+    }
   }
 
   // The model call can take well over Cloudflare's ~30s request cap, so we don't
   // await it here. The Node server is long-lived, so this promise runs to
   // completion and writes the result; the client polls GET /api/history/:id
   // until the evaluation row appears (or the attempt is marked EVAL_FAILED).
-  inFlight.add(attemptId);
-  void runEvaluation(attemptId).finally(() => inFlight.delete(attemptId));
+  void runEvaluation(attemptId).finally(() => clearInFlight(attemptId));
 
   return NextResponse.json({ status: "evaluating" }, { status: 202 });
 }
