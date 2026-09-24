@@ -15,7 +15,7 @@ const EnvSchema = z.object({
   // Evaluations are pure reasoning (no web_search): under a minute at medium
   // effort, several minutes at xhigh. Kept well under the generation ceiling so
   // a stalled socket aborts and retries instead of hanging for the full 20 min;
-  // raising it trades away that stall recovery. Must stay <= OPENAI_TIMEOUT_MS,
+  // raising it trades away that stall recovery. Clamped to OPENAI_TIMEOUT_MS,
   // which caps every call via the undici dispatcher. See lib/openai/client.ts.
   OPENAI_EVAL_TIMEOUT_MS: z.coerce.number().int().min(1000).default(600_000),
   LOCAL_USER_ID: z.string().uuid("LOCAL_USER_ID must be a UUID"),
@@ -69,7 +69,9 @@ export function parseConfig(env: NodeJS.ProcessEnv | Record<string, string | und
       model: v.OPENAI_MODEL,
       reasoningEffort: v.OPENAI_REASONING_EFFORT,
       timeoutMs: v.OPENAI_TIMEOUT_MS,
-      evalTimeoutMs: v.OPENAI_EVAL_TIMEOUT_MS
+      // A larger eval timeout would never take effect: the dispatcher's
+      // headers/body timeouts (= OPENAI_TIMEOUT_MS) would cut the call first.
+      evalTimeoutMs: Math.min(v.OPENAI_EVAL_TIMEOUT_MS, v.OPENAI_TIMEOUT_MS)
     },
     embedding: { model: v.EMBEDDING_MODEL },
     dedup: {

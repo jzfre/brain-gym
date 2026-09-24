@@ -27,6 +27,19 @@ describe("evaluationState", () => {
     ).toBe("evaluating");
   });
 
+  it("is evaluating when a run is in flight over a stale EVAL_FAILED (retry not yet reset)", () => {
+    expect(
+      evaluationState({ attempt: { status: "EVAL_FAILED" }, evaluation: null, evaluating: true })
+    ).toBe("evaluating");
+  });
+
+  it("is unavailable for an error body instead of polling it forever as evaluating", () => {
+    // middleware's 401 once the session lapses; the history route's 404/400
+    for (const body of [{ error: "unauthorized" }, { error: "not_found" }, { error: "invalid_id" }]) {
+      expect(evaluationState(body)).toBe("unavailable");
+    }
+  });
+
   it("does not claim interrupted when the server did not report in-flight state", () => {
     expect(evaluationState({ attempt: { status: "SUBMITTED" }, evaluation: null })).toBe(
       "evaluating"

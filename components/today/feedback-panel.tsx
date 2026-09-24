@@ -57,6 +57,8 @@ export function FeedbackPanel({
   const [failed, setFailed] = useState(false);
   // No evaluation, not failed, and nothing running it — a restart killed it.
   const [interrupted, setInterrupted] = useState(false);
+  // The status request itself failed (e.g. signed out) — nothing to poll.
+  const [unavailable, setUnavailable] = useState(false);
   const [slow, setSlow] = useState(false);
   const [timedOut, setTimedOut] = useState(false);
   // Bumped on retry / re-check to restart the polling effect.
@@ -89,6 +91,10 @@ export function FeedbackPanel({
           setInterrupted(true);
           return;
         }
+        if (state === "unavailable") {
+          setUnavailable(true);
+          return;
+        }
       } catch {
         // transient (e.g. the request was cut) — keep polling
       }
@@ -112,6 +118,7 @@ export function FeedbackPanel({
   async function retry() {
     setFailed(false);
     setInterrupted(false);
+    setUnavailable(false);
     setData(null);
     await fetch(`/api/attempts/${attemptId}/evaluate`, { method: "POST" }).catch(() => {});
     setAttempt((n) => n + 1);
@@ -139,6 +146,31 @@ export function FeedbackPanel({
           </p>
           <div className="flex gap-2">
             <Button onClick={retry}>Retry evaluation</Button>
+            <Button asChild variant="outline">
+              <Link href="/history">History</Link>
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  if (unavailable) {
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle>Couldn’t load this evaluation</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <p className="text-sm text-muted-foreground">
+            Your answer is saved (attempt #{attemptId}), but its status couldn’t be loaded — you may
+            have been signed out. Reload to sign in again and pick it up.
+          </p>
+          <div className="flex gap-2">
+            {/* A full navigation, so middleware can send a signed-out user to login and back. */}
+            <Button asChild>
+              <a href={`/history/${attemptId}`}>Reload</a>
+            </Button>
             <Button asChild variant="outline">
               <Link href="/history">History</Link>
             </Button>

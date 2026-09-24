@@ -31,16 +31,16 @@ export async function POST(_req: Request, { params }: { params: Promise<{ id: st
 
   // A retry after a failure: clear the stale EVAL_FAILED first, or the client's
   // next poll reads it as this run's result and shows "failed" straight away.
-  if (existing.status === AttemptStatus.EVAL_FAILED) {
-    try {
-      await prisma.attempt.update({
-        where: { id: attemptId },
-        data: { status: AttemptStatus.SUBMITTED }
-      });
-    } catch {
-      clearInFlight(attemptId);
-      return NextResponse.json({ error: "retry_failed" }, { status: 500 });
-    }
+  // Guarded in the DB rather than on `existing`: a previous run can write
+  // EVAL_FAILED after that read and leave the in-flight set before we get here.
+  try {
+    await prisma.attempt.updateMany({
+      where: { id: attemptId, status: AttemptStatus.EVAL_FAILED },
+      data: { status: AttemptStatus.SUBMITTED }
+    });
+  } catch {
+    clearInFlight(attemptId);
+    return NextResponse.json({ error: "retry_failed" }, { status: 500 });
   }
 
   // The model call can take well over Cloudflare's ~30s request cap, so we don't

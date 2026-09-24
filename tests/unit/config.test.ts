@@ -105,6 +105,14 @@ describe("config: openai eval timeout", () => {
     );
   });
 
+  it("is capped by OPENAI_TIMEOUT_MS, which bounds every call via the dispatcher", () => {
+    expect(parseConfig({ ...baseEnv, OPENAI_TIMEOUT_MS: "300000" }).openai.evalTimeoutMs).toBe(300_000);
+    expect(
+      parseConfig({ ...baseEnv, OPENAI_TIMEOUT_MS: "300000", OPENAI_EVAL_TIMEOUT_MS: "120000" }).openai
+        .evalTimeoutMs
+    ).toBe(120_000);
+  });
+
   it("rejects sub-second and non-integer values", () => {
     expect(() => parseConfig({ ...baseEnv, OPENAI_EVAL_TIMEOUT_MS: "999" })).toThrow();
     expect(() => parseConfig({ ...baseEnv, OPENAI_EVAL_TIMEOUT_MS: "1.5e4.2" })).toThrow();
