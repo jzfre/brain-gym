@@ -57,6 +57,9 @@ async function pollForProblem(jobId: string): Promise<string> {
 
 type ProblemPayload = {
   id: string;
+  // The exercise the problem was generated for — not the live tab, which the
+  // user can switch while a generation is running.
+  slug: (typeof EXERCISES)[number]["slug"];
   userVisiblePayload: {
     title: string;
     timeboxMinutes: number;
@@ -76,6 +79,7 @@ export function ExercisePicker() {
   const [error, setError] = useState<string | null>(null);
 
   async function handleGenerate() {
+    const exerciseSlug = slug;
     setGenerating(true);
     setError(null);
     setProblem(null);
@@ -84,7 +88,7 @@ export function ExercisePicker() {
       const res = await fetch("/api/problems/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ exerciseSlug: slug, difficulty })
+        body: JSON.stringify({ exerciseSlug, difficulty })
       });
       if (res.status !== 202) {
         const msg = await res.json().catch(() => ({}));
@@ -94,7 +98,7 @@ export function ExercisePicker() {
       const problemId = await pollForProblem(jobId);
       const probRes = await fetch(`/api/problems/${problemId}`);
       const prob = await probRes.json();
-      setProblem({ id: prob.id, userVisiblePayload: prob.userVisiblePayload });
+      setProblem({ id: prob.id, slug: exerciseSlug, userVisiblePayload: prob.userVisiblePayload });
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -114,7 +118,7 @@ export function ExercisePicker() {
 
   if (problem) {
     const q = problem.userVisiblePayload.questions;
-    if (slug === "LSAT_LOGICAL_REASONING" && q && q.length > 0) {
+    if (problem.slug === "LSAT_LOGICAL_REASONING" && q && q.length > 0) {
       return (
         <LsatSetRunner
           problem={{
@@ -128,7 +132,7 @@ export function ExercisePicker() {
         />
       );
     }
-    return <AnswerEditor problem={problem} slug={slug} />;
+    return <AnswerEditor problem={problem} slug={problem.slug} />;
   }
 
   return (
