@@ -32,12 +32,13 @@ type Detail = {
 
 const POLL_INTERVAL_MS = 3000;
 // After this, reassure the user it's safe to leave (eval keeps running server-side).
-const SLOW_NOTICE_MS = 90 * 1000;
+// High reasoning effort routinely takes several minutes, so don't fire early.
+const SLOW_NOTICE_MS = 5 * 60 * 1000;
 // Client give-up point, NOT the server's limit. The server's worst case is the
-// eval timeout × 2 SDK attempts (~10 min); we wait comfortably past that so a
-// result almost always lands here. Past it we stop auto-polling but the eval
-// keeps running and shows up in History.
-const POLL_DEADLINE_MS = 12 * 60 * 1000;
+// eval timeout (OPENAI_EVAL_TIMEOUT_MS, 10 min) × 2 SDK attempts (~20 min); we
+// wait comfortably past that so a result almost always lands here. Past it we
+// stop auto-polling but the eval keeps running and shows up in History.
+const POLL_DEADLINE_MS = 25 * 60 * 1000;
 
 export function FeedbackPanel({ attemptId }: { attemptId: number }) {
   const [data, setData] = useState<Detail | null>(null);
@@ -151,7 +152,7 @@ export function FeedbackPanel({ attemptId }: { attemptId: number }) {
         <CardContent className="py-10 text-center text-sm text-muted-foreground">
           {slow
             ? "Still working — this is taking longer than usual. Your answer is saved; you can safely leave this page and the result will show up in History."
-            : "Evaluating your answer… this usually takes a minute or two. You can leave this page — the result is saved and will show up in History."}
+            : "Evaluating your answer… this can take several minutes. You can leave this page — the result is saved and will show up in History."}
         </CardContent>
       </Card>
     );

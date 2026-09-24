@@ -61,6 +61,27 @@ describe("runStructured", () => {
     expect(parse.mock.calls[0][1]).toEqual({ timeout: 300_000 });
   });
 
+  it("forwards reasoning effort to the API and records it on the model run", async () => {
+    const { prisma } = await import("@/lib/db/client");
+    const parse = vi.fn(async (_req: Record<string, unknown>) => ({
+      output_parsed: { title: "hi", score: 7 },
+      usage: {}
+    }));
+    const fakeClient = { responses: { parse } };
+    await runStructured({
+      purpose: ModelRunPurpose.EVALUATE_ATTEMPT,
+      model: "gpt-6-sol",
+      input: "x",
+      schema: Schema,
+      schemaName: "demo",
+      reasoningEffort: "xhigh",
+      client: fakeClient as never
+    });
+    expect(parse.mock.calls[0][0].reasoning).toEqual({ effort: "xhigh" });
+    const created = vi.mocked(prisma.modelRun.create).mock.calls[0][0];
+    expect(created.data.requestPayload).toMatchObject({ reasoning: { effort: "xhigh" } });
+  });
+
   it("omits per-request options when timeoutMs is not set", async () => {
     const parse = vi.fn(
       async (_req: Record<string, unknown>, _opts?: { timeout?: number }) => ({
