@@ -8,6 +8,8 @@ import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { Timer } from "./timer";
 import { FeedbackPanel } from "./feedback-panel";
+import { MemoSections } from "./memo-sections";
+import { formatMemoAnswer, memoSectionsFor } from "@/lib/exercises/memo-extraction/template";
 
 type Section = { order: number; title: string; description?: string };
 
@@ -28,12 +30,15 @@ export function AnswerEditor({ problem, slug }: { problem: Problem; slug: string
     () => [...problem.userVisiblePayload.requiredAnswerSections].sort((a, b) => a.order - b.order),
     [problem]
   );
-  // LSAT walks the answer sections one at a time (Choice, then Reason); the other
-  // modes keep a single freeform box.
+  // LSAT walks the answer sections one at a time (Choice, then Reason); Memo
+  // shows a guided box per section; Incident keeps a single freeform box.
   const wizard = slug === "LSAT_LOGICAL_REASONING" && sections.length > 0;
+  const memo = slug === "MEMO_EXTRACTION";
+  const memoSections = useMemo(() => memoSectionsFor(sections), [sections]);
 
   const [step, setStep] = useState(0);
   const [answers, setAnswers] = useState<Record<number, string>>({});
+  const [memoAnswers, setMemoAnswers] = useState<string[]>(() => memoSections.map(() => ""));
   const [text, setText] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [stopped, setStopped] = useState(false);
@@ -107,7 +112,34 @@ export function AnswerEditor({ problem, slug }: { problem: Problem; slug: string
     );
   }
 
-  // Memo / Incident: one freeform answer box.
+  // Memo: one guided box per section; blank sections are allowed but flagged.
+  if (memo) {
+    const filled = memoAnswers.filter((a) => a.trim().length > 0).length;
+    return shell(
+      <>
+        <MemoSections
+          sections={memoSections}
+          values={memoAnswers}
+          onChange={(i, v) => setMemoAnswers((prev) => prev.map((a, j) => (j === i ? v : a)))}
+          disabled={submitting}
+        />
+        <div className="flex items-center gap-3">
+          <Button
+            onClick={() => submit(formatMemoAnswer(memoSections, memoAnswers))}
+            disabled={submitting || filled === 0}
+          >
+            {submitting ? "Submitting…" : "Submit"}
+          </Button>
+          <span className="text-sm text-muted-foreground">
+            {filled} of {memoSections.length} filled
+          </span>
+        </div>
+        {errorBlock}
+      </>
+    );
+  }
+
+  // Incident: one freeform answer box.
   if (!wizard) {
     return shell(
       <>

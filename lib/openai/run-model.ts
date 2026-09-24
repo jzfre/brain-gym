@@ -2,6 +2,7 @@ import type OpenAI from "openai";
 import { zodTextFormat } from "openai/helpers/zod";
 import type { z, ZodType } from "zod";
 import { ModelRunPurpose, ModelRunStatus } from "@prisma/client";
+import type { ReasoningEffort } from "@/lib/config";
 import { prisma } from "@/lib/db/client";
 import { getOpenAI } from "./client";
 
@@ -13,7 +14,7 @@ export type RunStructuredArgs<S extends ZodType> = {
   input: string | Array<{ role: "system" | "user" | "developer"; content: string }>;
   schema: S;
   schemaName: string;
-  reasoningEffort?: "minimal" | "low" | "medium" | "high";
+  reasoningEffort?: ReasoningEffort;
   tools?: WebSearchTool[];
   client?: Pick<OpenAI, "responses">;
   // Per-request timeout (ms). Overrides the client-level default so callers can

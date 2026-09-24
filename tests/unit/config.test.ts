@@ -40,6 +40,17 @@ describe("parseConfig", () => {
     });
     expect(cfg.openai.reasoningEffort).toBe("medium");
   });
+
+  it("accepts xhigh reasoning effort", () => {
+    const cfg = parseConfig({ ...baseEnv, OPENAI_REASONING_EFFORT: "xhigh" });
+    expect(cfg.openai.reasoningEffort).toBe("xhigh");
+  });
+
+  it("rejects an unknown reasoning effort", () => {
+    expect(() => parseConfig({ ...baseEnv, OPENAI_REASONING_EFFORT: "ultra" })).toThrow(
+      /OPENAI_REASONING_EFFORT/
+    );
+  });
 });
 
 const VALID_SECRET = "0123456789abcdef0123456789abcdef"; // 32 chars
@@ -84,14 +95,22 @@ describe("config: openai timeout", () => {
 });
 
 describe("config: openai eval timeout", () => {
-  it("defaults to 5 minutes", () => {
-    expect(parseConfig(baseEnv).openai.evalTimeoutMs).toBe(300_000);
+  it("defaults to 10 minutes", () => {
+    expect(parseConfig(baseEnv).openai.evalTimeoutMs).toBe(600_000);
   });
 
   it("reads an override and coerces it", () => {
     expect(parseConfig({ ...baseEnv, OPENAI_EVAL_TIMEOUT_MS: "120000" }).openai.evalTimeoutMs).toBe(
       120_000
     );
+  });
+
+  it("is capped by OPENAI_TIMEOUT_MS, which bounds every call via the dispatcher", () => {
+    expect(parseConfig({ ...baseEnv, OPENAI_TIMEOUT_MS: "300000" }).openai.evalTimeoutMs).toBe(300_000);
+    expect(
+      parseConfig({ ...baseEnv, OPENAI_TIMEOUT_MS: "300000", OPENAI_EVAL_TIMEOUT_MS: "120000" }).openai
+        .evalTimeoutMs
+    ).toBe(120_000);
   });
 
   it("rejects sub-second and non-integer values", () => {

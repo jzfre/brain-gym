@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
 import { LsatSetFeedback } from "@/components/today/lsat-set-feedback";
+import { FeedbackPanel } from "@/components/today/feedback-panel";
 import type { LsatPublicQuestion, LsatQuestionResult } from "@/lib/exercises/types";
 
 export const dynamic = "force-dynamic";
@@ -97,7 +98,8 @@ export default async function AttemptDetailPage({ params }: { params: Promise<{ 
                 </CardContent>
               </Card>
             ) : (
-              <p className="text-sm text-muted-foreground">No evaluation stored.</p>
+              // Still running, failed or interrupted: live status with a retry.
+              <FeedbackPanel attemptId={attempt.id} refreshOnEvaluated />
             )}
           </>
         )}
@@ -169,7 +171,8 @@ export default async function AttemptDetailPage({ params }: { params: Promise<{ 
           </CardContent>
         </Card>
       ) : (
-        <p className="text-sm text-muted-foreground">No evaluation stored.</p>
+        // Still running, failed or interrupted: live status with a retry.
+        <FeedbackPanel attemptId={attempt.id} refreshOnEvaluated />
       )}
     </main>
   );

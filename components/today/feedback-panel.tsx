@@ -2,14 +2,17 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Button } from "@/components/ui/button";
 import { LsatSetFeedback } from "./lsat-set-feedback";
+import { evaluationState } from "@/lib/evaluation/state";
 import type { LsatPublicQuestion, LsatQuestionResult } from "@/lib/exercises/types";
 
 type Detail = {
+  evaluating?: boolean;
   attempt: { id: number; responseText: string; status: string };
   problem?: { userVisiblePayload?: { questions?: LsatPublicQuestion[] } };
   evaluation: {
@@ -32,16 +35,30 @@ type Detail = {
 
 const POLL_INTERVAL_MS = 3000;
 // After this, reassure the user it's safe to leave (eval keeps running server-side).
-const SLOW_NOTICE_MS = 90 * 1000;
+// High reasoning effort routinely takes several minutes, so don't fire early.
+const SLOW_NOTICE_MS = 5 * 60 * 1000;
 // Client give-up point, NOT the server's limit. The server's worst case is the
-// eval timeout × 2 SDK attempts (~10 min); we wait comfortably past that so a
-// result almost always lands here. Past it we stop auto-polling but the eval
-// keeps running and shows up in History.
-const POLL_DEADLINE_MS = 12 * 60 * 1000;
+// eval timeout (OPENAI_EVAL_TIMEOUT_MS, 10 min) × 2 SDK attempts (~20 min); we
+// wait comfortably past that so a result almost always lands here. Past it we
+// stop auto-polling but the eval keeps running and shows up in History.
+const POLL_DEADLINE_MS = 25 * 60 * 1000;
 
-export function FeedbackPanel({ attemptId }: { attemptId: number }) {
+export function FeedbackPanel({
+  attemptId,
+  refreshOnEvaluated = false
+}: {
+  attemptId: number;
+  // On a server-rendered page (History detail), re-render it once the result
+  // lands so the page shows its own evaluated view instead of this one.
+  refreshOnEvaluated?: boolean;
+}) {
+  const router = useRouter();
   const [data, setData] = useState<Detail | null>(null);
   const [failed, setFailed] = useState(false);
+  // No evaluation, not failed, and nothing running it — a restart killed it.
+  const [interrupted, setInterrupted] = useState(false);
+  // The status request itself failed (e.g. signed out) — nothing to poll.
+  const [unavailable, setUnavailable] = useState(false);
   const [slow, setSlow] = useState(false);
   const [timedOut, setTimedOut] = useState(false);
   // Bumped on retry / re-check to restart the polling effect.
@@ -60,9 +77,22 @@ export function FeedbackPanel({ attemptId }: { attemptId: number }) {
         const d = (await r.json()) as Detail;
         if (!active) return;
         setData(d);
-        if (d.evaluation) return; // evaluation landed — stop polling
-        if (d.attempt?.status === "EVAL_FAILED") {
+        const state = evaluationState(d);
+        if (state === "evaluated") {
+          // evaluation landed — stop polling
+          if (refreshOnEvaluated) router.refresh();
+          return;
+        }
+        if (state === "failed") {
           setFailed(true);
+          return;
+        }
+        if (state === "interrupted") {
+          setInterrupted(true);
+          return;
+        }
+        if (state === "unavailable") {
+          setUnavailable(true);
           return;
         }
       } catch {
@@ -83,10 +113,12 @@ export function FeedbackPanel({ attemptId }: { attemptId: number }) {
       active = false;
       if (timer) clearTimeout(timer);
     };
-  }, [attemptId, attempt]);
+  }, [attemptId, attempt, refreshOnEvaluated, router]);
 
   async function retry() {
     setFailed(false);
+    setInterrupted(false);
+    setUnavailable(false);
     setData(null);
     await fetch(`/api/attempts/${attemptId}/evaluate`, { method: "POST" }).catch(() => {});
     setAttempt((n) => n + 1);
@@ -100,19 +132,45 @@ export function FeedbackPanel({ attemptId }: { attemptId: number }) {
     setAttempt((n) => n + 1);
   }
 
-  if (failed) {
+  if (failed || interrupted) {
     return (
       <Card>
         <CardHeader>
-          <CardTitle>Evaluation failed</CardTitle>
+          <CardTitle>{failed ? "Evaluation failed" : "Evaluation was interrupted"}</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
           <p className="text-sm text-muted-foreground">
-            Your answer was saved (attempt #{attemptId}). The evaluation didn’t complete — you can
-            retry it now or later from History.
+            {failed
+              ? `Your answer was saved (attempt #${attemptId}). The evaluation didn’t complete — you can retry it now or later from History.`
+              : `Your answer is saved (attempt #${attemptId}), but its evaluation stopped before finishing — usually because the server restarted. Retry to run it again.`}
           </p>
           <div className="flex gap-2">
             <Button onClick={retry}>Retry evaluation</Button>
+            <Button asChild variant="outline">
+              <Link href="/history">History</Link>
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  if (unavailable) {
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle>Couldn’t load this evaluation</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <p className="text-sm text-muted-foreground">
+            Your answer is saved (attempt #{attemptId}), but its status couldn’t be loaded — you may
+            have been signed out. Reload to sign in again and pick it up.
+          </p>
+          <div className="flex gap-2">
+            {/* A full navigation, so middleware can send a signed-out user to login and back. */}
+            <Button asChild>
+              <a href={`/history/${attemptId}`}>Reload</a>
+            </Button>
             <Button asChild variant="outline">
               <Link href="/history">History</Link>
             </Button>
@@ -151,7 +209,7 @@ export function FeedbackPanel({ attemptId }: { attemptId: number }) {
         <CardContent className="py-10 text-center text-sm text-muted-foreground">
           {slow
             ? "Still working — this is taking longer than usual. Your answer is saved; you can safely leave this page and the result will show up in History."
-            : "Evaluating your answer… this usually takes a minute or two. You can leave this page — the result is saved and will show up in History."}
+            : "Evaluating your answer… this can take several minutes. You can leave this page — the result is saved and will show up in History."}
         </CardContent>
       </Card>
     );

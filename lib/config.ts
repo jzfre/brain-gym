@@ -1,16 +1,23 @@
 import { z } from "zod";
 
+// Every value the Responses API accepts for reasoning.effort. Not every model
+// supports all of them (e.g. gpt-6-sol documents none..max without minimal).
+export const REASONING_EFFORTS = ["none", "minimal", "low", "medium", "high", "xhigh", "max"] as const;
+export type ReasoningEffort = (typeof REASONING_EFFORTS)[number];
+
 const EnvSchema = z.object({
   DATABASE_URL: z.string().min(1, "DATABASE_URL is required"),
   OPENAI_API_KEY: z.string().min(1, "OPENAI_API_KEY is required"),
   OPENAI_MODEL: z.string().min(1, "OPENAI_MODEL is required"),
-  OPENAI_REASONING_EFFORT: z.enum(["minimal", "low", "medium", "high"]).default("medium"),
+  OPENAI_REASONING_EFFORT: z.enum(REASONING_EFFORTS).default("medium"),
   // High reasoning effort + web_search can exceed the SDK's 10-minute default.
   OPENAI_TIMEOUT_MS: z.coerce.number().int().min(1000).default(1_200_000),
-  // Evaluations are pure reasoning (no web_search) and finish in 1-2 min, so a
-  // tight per-attempt timeout lets a stalled socket abort and retry quickly
-  // instead of hanging for the full generation ceiling. See lib/openai/client.ts.
-  OPENAI_EVAL_TIMEOUT_MS: z.coerce.number().int().min(1000).default(300_000),
+  // Evaluations are pure reasoning (no web_search): under a minute at medium
+  // effort, several minutes at xhigh. Kept well under the generation ceiling so
+  // a stalled socket aborts and retries instead of hanging for the full 20 min;
+  // raising it trades away that stall recovery. Clamped to OPENAI_TIMEOUT_MS,
+  // which caps every call via the undici dispatcher. See lib/openai/client.ts.
+  OPENAI_EVAL_TIMEOUT_MS: z.coerce.number().int().min(1000).default(600_000),
   LOCAL_USER_ID: z.string().uuid("LOCAL_USER_ID must be a UUID"),
   APP_PASSWORD: z.string().min(1, "APP_PASSWORD is required"),
   // Server-only secret that signs the session cookie. Must NOT equal the login
@@ -31,7 +38,7 @@ export type AppConfig = {
   openai: {
     apiKey: string;
     model: string;
-    reasoningEffort: "minimal" | "low" | "medium" | "high";
+    reasoningEffort: ReasoningEffort;
     timeoutMs: number;
     evalTimeoutMs: number;
   };
@@ -62,7 +69,9 @@ export function parseConfig(env: NodeJS.ProcessEnv | Record<string, string | und
       model: v.OPENAI_MODEL,
       reasoningEffort: v.OPENAI_REASONING_EFFORT,
       timeoutMs: v.OPENAI_TIMEOUT_MS,
-      evalTimeoutMs: v.OPENAI_EVAL_TIMEOUT_MS
+      // A larger eval timeout would never take effect: the dispatcher's
+      // headers/body timeouts (= OPENAI_TIMEOUT_MS) would cut the call first.
+      evalTimeoutMs: Math.min(v.OPENAI_EVAL_TIMEOUT_MS, v.OPENAI_TIMEOUT_MS)
     },
     embedding: { model: v.EMBEDDING_MODEL },
     dedup: {

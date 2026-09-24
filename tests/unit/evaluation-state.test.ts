@@ -1,0 +1,48 @@
+import { describe, it, expect } from "vitest";
+import { evaluationState } from "@/lib/evaluation/state";
+
+describe("evaluationState", () => {
+  it("is evaluated once an evaluation row exists", () => {
+    expect(
+      evaluationState({ attempt: { status: "EVALUATED" }, evaluation: {}, evaluating: false })
+    ).toBe("evaluated");
+  });
+
+  it("is failed when the attempt is marked EVAL_FAILED", () => {
+    expect(
+      evaluationState({ attempt: { status: "EVAL_FAILED" }, evaluation: null, evaluating: false })
+    ).toBe("failed");
+  });
+
+  it("is interrupted when nothing is evaluating an unevaluated attempt", () => {
+    // e.g. the container restarted mid-evaluation and took the run with it
+    expect(
+      evaluationState({ attempt: { status: "SUBMITTED" }, evaluation: null, evaluating: false })
+    ).toBe("interrupted");
+  });
+
+  it("is evaluating while a run is in flight", () => {
+    expect(
+      evaluationState({ attempt: { status: "SUBMITTED" }, evaluation: null, evaluating: true })
+    ).toBe("evaluating");
+  });
+
+  it("is evaluating when a run is in flight over a stale EVAL_FAILED (retry not yet reset)", () => {
+    expect(
+      evaluationState({ attempt: { status: "EVAL_FAILED" }, evaluation: null, evaluating: true })
+    ).toBe("evaluating");
+  });
+
+  it("is unavailable for an error body instead of polling it forever as evaluating", () => {
+    // middleware's 401 once the session lapses; the history route's 404/400
+    for (const body of [{ error: "unauthorized" }, { error: "not_found" }, { error: "invalid_id" }]) {
+      expect(evaluationState(body)).toBe("unavailable");
+    }
+  });
+
+  it("does not claim interrupted when the server did not report in-flight state", () => {
+    expect(evaluationState({ attempt: { status: "SUBMITTED" }, evaluation: null })).toBe(
+      "evaluating"
+    );
+  });
+});
