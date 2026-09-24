@@ -1,6 +1,6 @@
 // The memo answer form: one box per section, each with a generic guide to what
-// the evaluator grades. Titles and order must match the requiredAnswerSections
-// in prompts/memo_extraction.generator.md (the rubric is built around them).
+// the evaluator grades. Titles and order mirror the requiredAnswerSections in
+// prompts/memo_extraction.generator.md (the rubric is built around them).
 export type MemoTemplateSection = { title: string; guide: string };
 
 export const MEMO_TEMPLATE: readonly MemoTemplateSection[] = [
@@ -35,8 +35,31 @@ export const MEMO_TEMPLATE: readonly MemoTemplateSection[] = [
   }
 ];
 
+const normalize = (title: string) => title.toLowerCase().replace(/[^a-z0-9]/g, "");
+
+// The form for one problem. Labels come from the problem's own required
+// sections - what the evaluator grades against - so the answer always matches
+// them even if the generator strays from the template's titles. Each gets the
+// template's generic guide (matched loosely by title), else the section's
+// generated description. No sections at all falls back to the template.
+export function memoSectionsFor(
+  required: ReadonlyArray<{ order: number; title: string; description?: string | null }>
+): MemoTemplateSection[] {
+  if (required.length === 0) return [...MEMO_TEMPLATE];
+  return [...required]
+    .sort((a, b) => a.order - b.order)
+    .map((s) => ({
+      title: s.title,
+      guide:
+        MEMO_TEMPLATE.find((t) => normalize(t.title) === normalize(s.title))?.guide ?? s.description ?? ""
+    }));
+}
+
 // Same "Title:\nanswer" layout the LSAT wizard submits. Blank sections are
 // sent explicitly so the evaluator scores them as missing, not misread.
-export function formatMemoAnswer(answers: readonly string[]): string {
-  return MEMO_TEMPLATE.map((s, i) => `${s.title}:\n${answers[i]?.trim() || "(blank)"}`).join("\n\n");
+export function formatMemoAnswer(
+  sections: readonly MemoTemplateSection[],
+  answers: readonly string[]
+): string {
+  return sections.map((s, i) => `${s.title}:\n${answers[i]?.trim() || "(blank)"}`).join("\n\n");
 }

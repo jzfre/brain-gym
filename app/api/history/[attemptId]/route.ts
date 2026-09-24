@@ -9,11 +9,13 @@ export async function GET(_req: Request, { params }: { params: Promise<{ attempt
   const id = Number(attemptId);
   if (!Number.isInteger(id)) return NextResponse.json({ error: "invalid_id" }, { status: 400 });
 
-  // Read before the query: a run commits its result (or EVAL_FAILED) before it
-  // leaves the set, so "not in flight" here guarantees the read below sees the
-  // final state. Reading after could pair a stale row with a just-cleared flag
-  // and make a finished evaluation look interrupted.
-  const evaluating = isInFlight(id);
+  // Checked on both sides of the query, so a run that finishes or starts while
+  // it's in progress still counts: a finished run committed its result (or
+  // EVAL_FAILED) before leaving the set, and a starting retry is marked before
+  // it resets the row. Either way the row read below may be stale, and a lone
+  // "not in flight" would make a live or just-finished evaluation look
+  // interrupted.
+  const inFlightBefore = isInFlight(id);
   const attempt = await prisma.attempt.findUnique({
     where: { id },
     include: {
@@ -30,6 +32,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ attempt
     }
   });
   if (!attempt) return NextResponse.json({ error: "not_found" }, { status: 404 });
+  const evaluating = inFlightBefore || isInFlight(id);
 
   return NextResponse.json({
     attempt: {

@@ -54,4 +54,14 @@ describe("GET /api/history/:attemptId", () => {
     });
     expect((await get(9)).evaluating).toBe(true);
   });
+
+  it("reports evaluating when a retry starts during the read (no false 'interrupted')", async () => {
+    // A retry marks the attempt in flight (and resets it to SUBMITTED) while
+    // this poll's read is in progress, so the read returns the SUBMITTED row.
+    findUnique.mockImplementationOnce(async () => {
+      markInFlight(9);
+      return unevaluated;
+    });
+    expect((await get(9)).evaluating).toBe(true);
+  });
 });
