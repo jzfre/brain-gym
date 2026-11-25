@@ -2,7 +2,15 @@ import { z } from "zod";
 
 // Every value the Responses API accepts for reasoning.effort. Not every model
 // supports all of them (e.g. gpt-6-sol documents none..max without minimal).
-export const REASONING_EFFORTS = ["none", "minimal", "low", "medium", "high", "xhigh", "max"] as const;
+export const REASONING_EFFORTS = [
+  "none",
+  "minimal",
+  "low",
+  "medium",
+  "high",
+  "xhigh",
+  "max"
+] as const;
 export type ReasoningEffort = (typeof REASONING_EFFORTS)[number];
 
 const EnvSchema = z.object({
@@ -18,7 +26,9 @@ const EnvSchema = z.object({
   // raising it trades away that stall recovery. Clamped to OPENAI_TIMEOUT_MS,
   // which caps every call via the undici dispatcher. See lib/openai/client.ts.
   OPENAI_EVAL_TIMEOUT_MS: z.coerce.number().int().min(1000).default(600_000),
-  LOCAL_USER_ID: z.string().uuid("LOCAL_USER_ID must be a UUID"),
+  // The established local seed ID is a GUID with no RFC version/variant bits.
+  // Preserve it when validating with Zod 4's stricter UUID implementation.
+  LOCAL_USER_ID: z.guid("LOCAL_USER_ID must be a UUID"),
   APP_PASSWORD: z.string().min(1, "APP_PASSWORD is required"),
   // Server-only secret that signs the session cookie. Must NOT equal the login
   // password: the cookie is an HMAC over this value, so it never reveals
@@ -52,7 +62,9 @@ export type AppConfig = {
   };
 };
 
-export function parseConfig(env: NodeJS.ProcessEnv | Record<string, string | undefined>): AppConfig {
+export function parseConfig(
+  env: NodeJS.ProcessEnv | Record<string, string | undefined>
+): AppConfig {
   const parsed = EnvSchema.safeParse(env);
   if (!parsed.success) {
     const msg = parsed.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`).join("; ");

@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/db/client";
+import { getConfig } from "@/lib/config";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
@@ -13,10 +14,10 @@ export const dynamic = "force-dynamic";
 export default async function AttemptDetailPage({ params }: { params: Promise<{ attemptId: string }> }) {
   const { attemptId } = await params;
   const id = Number(attemptId);
-  if (!Number.isInteger(id)) notFound();
+  if (!/^\d+$/.test(attemptId) || !Number.isSafeInteger(id) || id <= 0 || id > 2147483647) notFound();
 
   const attempt = await prisma.attempt.findUnique({
-    where: { id },
+    where: { id, userId: getConfig().localUserId },
     include: {
       problem: { include: { exerciseType: true } },
       evaluation: { include: { dimensions: true } }

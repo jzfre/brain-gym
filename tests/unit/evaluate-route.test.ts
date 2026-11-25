@@ -1,97 +1,89 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
-import { AttemptStatus } from "@prisma/client";
-
-// Fully mocked: tests/setup.ts loads the live .env, so nothing here may reach
-// the real database or OpenAI.
-const findUnique = vi.fn();
-const updateMany = vi.fn(async (..._args: unknown[]) => ({ count: 0 }));
-vi.mock("@/lib/db/client", () => ({
-  prisma: {
-    attempt: {
-      findUnique: (...a: unknown[]) => findUnique(...a),
-      updateMany: (...a: unknown[]) => updateMany(...a)
-    }
-  }
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { JobCapacityError } from "@/lib/jobs/types";
+const deps = vi.hoisted(() => ({ find: vi.fn(), enqueue: vi.fn(), wake: vi.fn() }));
+vi.mock("@/lib/db/client", () => ({ prisma: { attempt: { findUnique: deps.find } } }));
+vi.mock("@/lib/config", () => ({ getConfig: () => ({ localUserId: "local-user" }) }));
+vi.mock("@/lib/jobs/worker", () => ({ wakeWorker: deps.wake }));
+vi.mock("@/lib/jobs/store", async () => ({
+  ...(await import("@/lib/jobs/types")),
+  enqueueJob: deps.enqueue
 }));
-vi.mock("@/lib/exercises/registry", () => ({ getMode: vi.fn() }));
-vi.mock("@/lib/prompts/registry", () => ({ loadActivePrompt: vi.fn() }));
-
 import { POST } from "@/app/api/attempts/[id]/evaluate/route";
-import { clearInFlight, isInFlight, markInFlight } from "@/lib/evaluation/in-flight";
-
-// The route's status-guarded reset of a stale EVAL_FAILED.
-const resetFailed = {
-  where: { id: 7, status: AttemptStatus.EVAL_FAILED },
-  data: { status: AttemptStatus.SUBMITTED }
-};
-
-function call(id: number) {
-  return POST(new Request(`http://x/api/attempts/${id}/evaluate`, { method: "POST" }), {
-    params: Promise.resolve({ id: String(id) })
-  });
-}
-
+const call = (id: string = "7") =>
+  POST(new Request("http://x", { method: "POST" }), { params: Promise.resolve({ id }) });
 beforeEach(() => {
-  vi.clearAllMocks();
-  clearInFlight(7);
+  vi.resetAllMocks();
+  deps.find.mockResolvedValue({ id: 7, status: "SUBMITTED", evaluation: null });
+  deps.enqueue.mockResolvedValue({ id: "saved-job" });
 });
 
-describe("POST /api/attempts/:id/evaluate", () => {
-  it("resets a failed attempt to SUBMITTED before re-running, so polls don't see the old failure", async () => {
-    findUnique
-      .mockResolvedValueOnce({ id: 7, status: AttemptStatus.EVAL_FAILED, evaluation: null })
-      // runEvaluation's own lookup: pretend it already finished so it exits early
-      .mockResolvedValueOnce({ id: 7, evaluation: { id: 1 } });
+describe("durable evaluation route", () => {
+  it.each(["0", "-1", "1.5", "1e2", "2147483648", "", " 7 "])(
+    "rejects invalid attempt ID %j before querying",
+    async (id) => {
+      expect((await call(id)).status).toBe(400);
+      expect(deps.find).not.toHaveBeenCalled();
+    }
+  );
 
-    const res = await call(7);
-
-    expect(res.status).toBe(202);
-    expect(updateMany).toHaveBeenCalledWith(resetFailed);
+  it("scopes attempts to the configured user", async () => {
+    deps.find.mockResolvedValueOnce(null);
+    expect((await call()).status).toBe(404);
+    expect(deps.find).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: 7, userId: "local-user" } })
+    );
+    expect(deps.enqueue).not.toHaveBeenCalled();
   });
 
-  it("resets an EVAL_FAILED written by a run that finished after this request's read", async () => {
-    let dbStatus: AttemptStatus = AttemptStatus.SUBMITTED;
-    updateMany.mockImplementation(async (...args: unknown[]) => {
-      const { where, data } = args[0] as typeof resetFailed;
-      if (where.status !== dbStatus) return { count: 0 };
-      dbStatus = data.status;
-      return { count: 1 };
+  it("returns completed feedback without enqueueing more work", async () => {
+    deps.find.mockResolvedValueOnce({ id: 7, evaluation: { id: "evaluation-id" } });
+    const response = await call();
+    expect(await response.json()).toEqual({ status: "evaluated", evaluationId: "evaluation-id" });
+    expect(deps.enqueue).not.toHaveBeenCalled();
+  });
+
+  it("uses the attempt ID as durable dedupe key for concurrent or retried POSTs", async () => {
+    const responses = await Promise.all([call(), call()]);
+    expect(responses.map((response) => response.status)).toEqual([202, 202]);
+    expect(deps.enqueue).toHaveBeenCalledWith({
+      kind: "EVALUATION",
+      userId: "local-user",
+      payload: { attemptId: 7 },
+      dedupeKey: "7"
     });
-    markInFlight(7); // previous run still going
-    findUnique
-      .mockImplementationOnce(async () => {
-        const snapshot = { id: 7, status: dbStatus, evaluation: null }; // read: SUBMITTED
-        dbStatus = AttemptStatus.EVAL_FAILED; // the old run fails...
-        clearInFlight(7); // ...and leaves the set before this POST resumes
-        return snapshot;
+    expect(await responses[0].json()).toEqual({ status: "evaluating", jobId: "saved-job" });
+  });
+
+  it("waits for the durable enqueue before responding 202", async () => {
+    let finish!: (job: { id: string }) => void;
+    deps.enqueue.mockReturnValueOnce(
+      new Promise((resolve) => {
+        finish = resolve;
       })
-      .mockResolvedValueOnce({ id: 7, evaluation: { id: 1 } }); // new run's lookup exits
-
-    expect((await call(7)).status).toBe(202);
-    expect(dbStatus).toBe(AttemptStatus.SUBMITTED);
+    );
+    let acknowledged = false;
+    const pending = call().then((response) => {
+      acknowledged = true;
+      return response;
+    });
+    await vi.waitFor(() => expect(deps.enqueue).toHaveBeenCalledOnce());
+    expect(acknowledged).toBe(false);
+    expect(deps.wake).not.toHaveBeenCalled();
+    finish({ id: "saved-job" });
+    expect((await pending).status).toBe(202);
   });
 
-  it("marks the attempt in flight until the run settles", async () => {
-    let finish!: (v: unknown) => void;
-    findUnique
-      .mockResolvedValueOnce({ id: 7, status: AttemptStatus.SUBMITTED, evaluation: null })
-      .mockReturnValueOnce(new Promise((r) => (finish = r)));
-
-    await call(7);
-    expect(isInFlight(7)).toBe(true);
-    expect(updateMany).toHaveBeenCalledWith(resetFailed); // status-guarded: a no-op for SUBMITTED
-
-    finish({ id: 7, evaluation: { id: 1 } });
-    await vi.waitFor(() => expect(isInFlight(7)).toBe(false));
+  it("does not acknowledge work if persistence fails", async () => {
+    deps.enqueue.mockRejectedValueOnce(new Error("database unavailable"));
+    await expect(call()).rejects.toThrow("database unavailable");
+    expect(deps.wake).not.toHaveBeenCalled();
   });
 
-  it("does not start a second run while one is in flight", async () => {
-    findUnique.mockResolvedValue({ id: 7, status: AttemptStatus.SUBMITTED, evaluation: null });
-    markInFlight(7);
-
-    const res = await call(7);
-
-    expect(res.status).toBe(202);
-    expect(findUnique).toHaveBeenCalledTimes(1); // no runEvaluation lookup
+  it("returns retryable capacity pressure instead of starting another evaluator", async () => {
+    deps.enqueue.mockRejectedValueOnce(new JobCapacityError("EVALUATION"));
+    const response = await call();
+    expect(response.status).toBe(429);
+    expect(response.headers.get("Retry-After")).toBe("10");
+    expect(deps.wake).not.toHaveBeenCalled();
   });
 });

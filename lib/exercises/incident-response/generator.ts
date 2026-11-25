@@ -31,5 +31,5 @@ export async function generateIncidentProblem(input: GenerateInput): Promise<Gen
     ]
   });
 
-  return { problem: result.parsed, modelRunId: result.modelRunId };
+  return { problem: { ...result.parsed, difficulty: input.difficulty }, modelRunId: result.modelRunId };
 }

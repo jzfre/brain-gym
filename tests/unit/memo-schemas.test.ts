@@ -29,12 +29,12 @@ const validProblem = {
   },
   rubric: {
     dimensions: [
-      { name: "Claim clarity", maxScore: 10, description: "" },
-      { name: "Evidence quality", maxScore: 10, description: "" },
-      { name: "Assumptions", maxScore: 10, description: "" },
-      { name: "Tradeoffs", maxScore: 10, description: "" },
-      { name: "Testability", maxScore: 10, description: "" },
-      { name: "What would change my mind", maxScore: 10, description: "" }
+      { name: "Claim clarity", maxScore: 10, description: "Assess this dimension against the answer key." },
+      { name: "Evidence quality", maxScore: 10, description: "Assess this dimension against the answer key." },
+      { name: "Assumptions", maxScore: 10, description: "Assess this dimension against the answer key." },
+      { name: "Tradeoffs", maxScore: 10, description: "Assess this dimension against the answer key." },
+      { name: "Testability", maxScore: 10, description: "Assess this dimension against the answer key." },
+      { name: "What would change my mind", maxScore: 10, description: "Assess this dimension against the answer key." }
     ]
   },
   tags: ["budget", "municipal"],

@@ -23,20 +23,27 @@ export function LoginForm() {
     setError(null);
     setPending(true);
 
-    const res = await fetch("/api/auth/login", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ password })
-    });
-
-    if (!res.ok) {
+    try {
+      const res = await fetch("/api/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ password })
+      });
+      if (!res.ok) {
+        setError(
+          res.status === 429
+            ? `Too many attempts. Try again in ${res.headers.get("Retry-After") ?? "60"} seconds.`
+            : res.status === 401 ? "Wrong password." : `Login failed (${res.status})`
+        );
+        return;
+      }
+      // Hard navigation makes middleware and server rendering see the new cookie.
+      window.location.assign(safeNextPath(rawNext, window.location.origin));
+    } catch {
+      setError("Couldn’t connect. Check your connection and try again.");
+    } finally {
       setPending(false);
-      setError(res.status === 401 ? "Wrong password." : `Login failed (${res.status})`);
-      return;
     }
-    // Hard navigation: forces a fresh server render so the cookie is honored
-    // and the layout/middleware see the authenticated state from scratch.
-    window.location.assign(safeNextPath(rawNext, window.location.origin));
   }
 
   return (
@@ -61,7 +68,7 @@ export function LoginForm() {
           <Button type="submit" disabled={pending || password.length === 0} className="w-full">
             {pending ? "Signing in…" : "Sign in"}
           </Button>
-          {error && <p className="text-sm text-destructive">{error}</p>}
+          {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
         </form>
       </CardContent>
     </Card>

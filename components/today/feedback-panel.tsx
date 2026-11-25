@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Button } from "@/components/ui/button";
 import { LsatSetFeedback } from "./lsat-set-feedback";
+import { startEvaluation } from "./requests";
 import { evaluationState } from "@/lib/evaluation/state";
 import type { LsatPublicQuestion, LsatQuestionResult } from "@/lib/exercises/types";
 
@@ -55,7 +56,7 @@ export function FeedbackPanel({
   const router = useRouter();
   const [data, setData] = useState<Detail | null>(null);
   const [failed, setFailed] = useState(false);
-  // No evaluation, not failed, and nothing running it — a restart killed it.
+  // No evaluation, not failed, and no durable job queued for this answer.
   const [interrupted, setInterrupted] = useState(false);
   // The status request itself failed (e.g. signed out) — nothing to poll.
   const [unavailable, setUnavailable] = useState(false);
@@ -63,17 +64,31 @@ export function FeedbackPanel({
   const [timedOut, setTimedOut] = useState(false);
   // Bumped on retry / re-check to restart the polling effect.
   const [attempt, setAttempt] = useState(0);
+  const [retrying, setRetrying] = useState(false);
+  const [retryError, setRetryError] = useState<string | null>(null);
 
   useEffect(() => {
     let active = true;
+    const controller = new AbortController();
     let timer: ReturnType<typeof setTimeout> | undefined;
     const startedAt = Date.now();
     setSlow(false);
     setTimedOut(false);
+    setData(null);
+    setFailed(false);
+    setInterrupted(false);
+    setUnavailable(false);
+    setRetryError(null);
 
     async function poll() {
       try {
-        const r = await fetch(`/api/history/${attemptId}`);
+        const r = await fetch(`/api/history/${attemptId}`, { signal: controller.signal, cache: "no-store" });
+        if (!active) return;
+        if (r.status === 401 || r.status === 403 || r.status === 404) {
+          setUnavailable(true);
+          return;
+        }
+        if (!r.ok) throw new Error("Status request failed");
         const d = (await r.json()) as Detail;
         if (!active) return;
         setData(d);
@@ -111,17 +126,22 @@ export function FeedbackPanel({
     poll();
     return () => {
       active = false;
+      controller.abort();
       if (timer) clearTimeout(timer);
     };
   }, [attemptId, attempt, refreshOnEvaluated, router]);
 
   async function retry() {
-    setFailed(false);
-    setInterrupted(false);
-    setUnavailable(false);
-    setData(null);
-    await fetch(`/api/attempts/${attemptId}/evaluate`, { method: "POST" }).catch(() => {});
-    setAttempt((n) => n + 1);
+    setRetrying(true);
+    setRetryError(null);
+    try {
+      await startEvaluation(attemptId);
+      setAttempt((n) => n + 1);
+    } catch (error) {
+      setRetryError(error instanceof Error ? error.message : "Couldn’t connect. Please try again.");
+    } finally {
+      setRetrying(false);
+    }
   }
 
   // Re-check after the deadline WITHOUT kicking off a second evaluation — the
@@ -142,14 +162,15 @@ export function FeedbackPanel({
           <p className="text-sm text-muted-foreground">
             {failed
               ? `Your answer was saved (attempt #${attemptId}). The evaluation didn’t complete — you can retry it now or later from History.`
-              : `Your answer is saved (attempt #${attemptId}), but its evaluation stopped before finishing — usually because the server restarted. Retry to run it again.`}
+              : `Your answer is saved (attempt #${attemptId}), but no evaluation is currently queued. Retry to evaluate it.`}
           </p>
           <div className="flex gap-2">
-            <Button onClick={retry}>Retry evaluation</Button>
+            <Button onClick={retry} disabled={retrying}>{retrying ? "Retrying…" : "Retry evaluation"}</Button>
             <Button asChild variant="outline">
               <Link href="/history">History</Link>
             </Button>
           </div>
+          {retryError && <p role="alert" className="text-sm text-destructive">{retryError}</p>}
         </CardContent>
       </Card>
     );
@@ -234,7 +255,7 @@ export function FeedbackPanel({
         />
         <div className="flex gap-2">
           <Button asChild variant="outline">
-            <Link href="/today">New problem</Link>
+            <a href="/today">New problem</a>
           </Button>
           <Button asChild variant="ghost">
             <Link href="/history">History</Link>
@@ -309,7 +330,7 @@ export function FeedbackPanel({
         </section>
         <div className="flex gap-2">
           <Button asChild variant="outline">
-            <Link href="/today">New problem</Link>
+            <a href="/today">New problem</a>
           </Button>
           <Button asChild variant="ghost">
             <Link href="/history">History</Link>

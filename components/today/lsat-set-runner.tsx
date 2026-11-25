@@ -9,6 +9,9 @@ import { Separator } from "@/components/ui/separator";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Timer } from "./timer";
 import { FeedbackPanel } from "./feedback-panel";
+import { saveAttemptAndEvaluate } from "./requests";
+import type { ExerciseDraft, DraftUpdate } from "./draft-storage";
+import { SubmissionError } from "./submission-error";
 import type { LsatPublicQuestion } from "@/lib/exercises/types";
 
 const CHOICES = ["A", "B", "C", "D", "E"] as const;
@@ -24,19 +27,20 @@ type Problem = {
 
 type Answer = { choice: string; reasoning: string };
 
-export function LsatSetRunner({ problem }: { problem: Problem }) {
-  const startRef = useRef(Date.now());
+export function LsatSetRunner({ problem, draft, updateDraft, onSubmitted }: {
+  problem: Problem; draft: ExerciseDraft; updateDraft: DraftUpdate; onSubmitted: (id: number) => void;
+}) {
+  const submittingRef = useRef(false);
   const questions = useMemo(
     () => [...problem.userVisiblePayload.questions].sort((a, b) => a.number - b.number),
     [problem]
   );
 
-  const [step, setStep] = useState(0);
-  const [answers, setAnswers] = useState<Record<number, Answer>>({});
+  const step = Math.min(draft.step, Math.max(0, questions.length - 1));
+  const answers = draft.lsatAnswers;
   const [submitting, setSubmitting] = useState(false);
   const [stopped, setStopped] = useState(false);
   const [attemptId, setAttemptId] = useState<number | null>(null);
-  const [started, setStarted] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const q = questions[step];
@@ -45,18 +49,20 @@ export function LsatSetRunner({ problem }: { problem: Problem }) {
   const currentFilled = answer.choice !== "" && answer.reasoning.trim().length > 0;
 
   function update(patch: Partial<Answer>) {
-    setAnswers((prev) => ({
-      ...prev,
-      [q.number]: { ...(prev[q.number] ?? { choice: "", reasoning: "" }), ...patch }
-    }));
+    updateDraft({ lsatAnswers: {
+      ...answers,
+      [q.number]: { ...(answers[q.number] ?? { choice: "", reasoning: "" }), ...patch }
+    } });
   }
 
   async function submit() {
+    if (submittingRef.current) return;
+    submittingRef.current = true;
     setSubmitting(true);
     setStopped(true);
     setError(null);
     try {
-      const elapsed = Math.floor((Date.now() - startRef.current) / 1000);
+      const elapsed = Math.floor((Date.now() - (draft.startedAt ?? Date.now())) / 1000);
       const responseText = JSON.stringify({
         answers: questions.map((question) => ({
           number: question.number,
@@ -64,29 +70,24 @@ export function LsatSetRunner({ problem }: { problem: Problem }) {
           reasoning: (answers[question.number]?.reasoning ?? "").trim()
         }))
       });
-      const attemptRes = await fetch("/api/attempts", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ problemId: problem.id, responseText, timeSpentSeconds: elapsed })
+      const aid = await saveAttemptAndEvaluate({
+        problemId: problem.id,
+        clientSubmissionId: draft.clientSubmissionId,
+        responseText,
+        timeSpentSeconds: elapsed
       });
-      if (!attemptRes.ok) throw new Error("Failed to save attempt");
-      const { attemptId: aid } = await attemptRes.json();
       setAttemptId(aid);
-      const evalRes = await fetch(`/api/attempts/${aid}/evaluate`, { method: "POST" });
-      if (!evalRes.ok) {
-        const msg = await evalRes.json().catch(() => ({}));
-        throw new Error(`Couldn’t start evaluation: ${msg.message ?? evalRes.status}`);
-      }
-      setStarted(true);
+      onSubmitted(aid);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
       setStopped(false); // submit failed; resume the timer while the user is still working
     } finally {
+      submittingRef.current = false;
       setSubmitting(false);
     }
   }
 
-  if (started && attemptId) {
+  if (attemptId) {
     return <FeedbackPanel attemptId={attemptId} />;
   }
 
@@ -101,7 +102,7 @@ export function LsatSetRunner({ problem }: { problem: Problem }) {
       <CardHeader>
         <CardTitle className="flex items-baseline justify-between gap-4">
           <span>{problem.userVisiblePayload.title}</span>
-          <Timer minutes={problem.userVisiblePayload.timeboxMinutes} running={!stopped} />
+          <Timer minutes={problem.userVisiblePayload.timeboxMinutes} running={!stopped} startedAt={draft.startedAt ?? undefined} />
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-5">
@@ -152,7 +153,7 @@ export function LsatSetRunner({ problem }: { problem: Problem }) {
 
         <div className="flex items-center gap-3">
           {step > 0 ? (
-            <Button variant="outline" onClick={() => setStep((s) => Math.max(s - 1, 0))} disabled={submitting}>
+            <Button variant="outline" onClick={() => updateDraft({ step: Math.max(step - 1, 0) })} disabled={submitting}>
               Back
             </Button>
           ) : null}
@@ -161,7 +162,7 @@ export function LsatSetRunner({ problem }: { problem: Problem }) {
               {submitting ? "Submitting…" : `Submit all ${questions.length}`}
             </Button>
           ) : (
-            <Button onClick={() => setStep((s) => Math.min(s + 1, questions.length - 1))} disabled={!currentFilled}>
+            <Button onClick={() => updateDraft({ step: Math.min(step + 1, questions.length - 1) })} disabled={!currentFilled}>
               Next
             </Button>
           )}
@@ -170,14 +171,7 @@ export function LsatSetRunner({ problem }: { problem: Problem }) {
           ) : null}
         </div>
 
-        {error && (
-          <div className="rounded-md border border-destructive bg-destructive/10 p-3 text-sm text-destructive">
-            {error}
-            {attemptId ? (
-              <p className="mt-1 text-xs">Your attempt was saved (id {attemptId}). Retry from history.</p>
-            ) : null}
-          </div>
-        )}
+        <SubmissionError error={error} problemId={problem.id} />
       </CardContent>
     </Card>
   );

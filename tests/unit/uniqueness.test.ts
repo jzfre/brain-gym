@@ -31,3 +31,18 @@ describe("computeUniquenessHash", () => {
     expect(a).toBe(b);
   });
 });
+
+describe("LSAT set fingerprints", () => {
+  const base = { title: "Reasoning set", promptText: "Answer 5 questions.", tags: ["flaw"] };
+  const question = { stimulus: "If P then Q. Q therefore P.", questionStem: "Which flaw?", choices: { A: "Converse", B: "Scope" } };
+  it("distinguishes real questions even when generated titles/tags/counts repeat", () => {
+    expect(computeUniquenessHash({ ...base, questions: [question] })).not.toBe(
+      computeUniquenessHash({ ...base, questions: [{ ...question, stimulus: "A biased sample estimates a population." }] })
+    );
+  });
+  it("still detects an exact set after answer-choice shuffling", () => {
+    expect(computeUniquenessHash({ ...base, questions: [question] })).toBe(
+      computeUniquenessHash({ ...base, questions: [{ ...question, choices: { A: "Scope", B: "Converse" } }] })
+    );
+  });
+});

@@ -33,3 +33,5 @@ Rules:
     answer often phrased unattractively.
 - Exactly one correct choice per question.
 - Never use web_search for LSAT generation.
+
+- Write stimuli, stems, choices, explanations and distractor analyses without referring to option letters. Refer to the substance of a choice instead; never use "both A and C", "choice B", "the first option", or "all of the above". The application randomizes options only when all prose is independent of option labels.

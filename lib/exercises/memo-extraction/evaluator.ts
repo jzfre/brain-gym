@@ -1,6 +1,8 @@
 import { ExerciseSlug, ModelRunPurpose, PromptRole } from "@prisma/client";
 import { loadActivePrompt } from "@/lib/prompts/registry";
 import { runStructured } from "@/lib/openai/run-model";
+import { EVALUATOR_BOUNDARY } from "../contracts";
+import { validateRubricEvaluation } from "@/lib/exercises/validate-rubric";
 import { getConfig } from "@/lib/config";
 import type { EvaluateInput, EvaluateResult } from "@/lib/exercises/types";
 import { MemoEvaluationSchema } from "./schemas";
@@ -35,10 +37,11 @@ export async function evaluateMemoAttempt(input: EvaluateInput): Promise<Evaluat
     timeoutMs: cfg.openai.evalTimeoutMs,
     input: [
       { role: "system", content: base.content },
-      { role: "system", content: ev.content },
+      { role: "system", content: `${ev.content}\n\n${EVALUATOR_BOUNDARY}` },
       { role: "user", content: userPayload }
     ]
   });
 
-  return { evaluation: result.parsed, modelRunId: result.modelRunId };
+  const overallScore = validateRubricEvaluation(input.problem, result.parsed);
+  return { evaluation: { ...result.parsed, overallScore }, modelRunId: result.modelRunId };
 }

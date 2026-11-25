@@ -65,9 +65,9 @@ export async function verifySessionToken(
   if (dot <= 0) return false;
   const issuedAt = token.slice(0, dot);
   const sig = token.slice(dot + 1);
-  if (!/^\d+$/.test(issuedAt)) return false;
+  if (!/^\d{1,12}$/.test(issuedAt) || !/^[a-f0-9]{64}$/.test(sig)) return false;
   const expected = await hmacHex(secret, issuedAt);
   if (!timingSafeEqualStr(sig, expected)) return false;
   const ageSec = Math.floor(nowMs / 1000) - Number(issuedAt);
-  return ageSec <= maxAgeSec;
+  return ageSec >= 0 && ageSec < maxAgeSec;
 }
