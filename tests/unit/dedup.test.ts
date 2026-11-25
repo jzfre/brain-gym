@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from "vitest";
+import { it, expect, vi } from "vitest";
 import { generateUniqueProblem } from "@/lib/memory/dedup";
 import type { GenerateInput, GenerateResult } from "@/lib/exercises/types";
 
@@ -118,4 +118,31 @@ it("accumulates colliding neighbors across consecutive retries", async () => {
   expect(thirdHint.recentTitles).toContain("C2");
   expect(thirdHint.recentTags).toContain("t1");
   expect(thirdHint.recentTags).toContain("t2");
+});
+
+it("accepts the first problem even when the configured similarity threshold is zero", async () => {
+  const generate = vi.fn(async () => fakeResult("first"));
+  const outcome = await generateUniqueProblem({ input: baseInput, config: { threshold: 0, maxRetries: 3 },
+    deps: { ...deps0, generate, findSimilar: async () => [] } });
+  expect(generate).toHaveBeenCalledOnce();
+  expect(outcome.isNearDuplicate).toBe(false);
+});
+
+it("retries exact duplicates before embedding, including when embedding is unavailable", async () => {
+  const generate = vi.fn().mockResolvedValueOnce(fakeResult("duplicate")).mockResolvedValueOnce(fakeResult("new"));
+  const embed = vi.fn(async () => null);
+  const isExactDuplicate = vi.fn().mockResolvedValueOnce(true).mockResolvedValueOnce(false);
+  const outcome = await generateUniqueProblem({ input: baseInput, config,
+    deps: { generate, embed, isExactDuplicate, embeddingText: () => "text", findSimilar: async () => [] } });
+  expect(outcome.result.problem.title).toBe("new");
+  expect(outcome.attemptsUsed).toBe(2);
+  expect(embed).toHaveBeenCalledOnce();
+  expect(generate.mock.calls[1][0].avoidanceHint.recentTitles).toContain("duplicate");
+});
+
+it("never returns an exact duplicate as the fallback after exhausting the budget", async () => {
+  const generate = vi.fn(async () => fakeResult("duplicate"));
+  await expect(generateUniqueProblem({ input: baseInput, config,
+    deps: { ...deps0, generate, isExactDuplicate: async () => true, findSimilar: async () => [] } })).rejects.toThrow("distinct");
+  expect(generate).toHaveBeenCalledTimes(3);
 });

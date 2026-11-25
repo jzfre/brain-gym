@@ -8,6 +8,9 @@ import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { Timer } from "./timer";
 import { FeedbackPanel } from "./feedback-panel";
+import { saveAttemptAndEvaluate } from "./requests";
+import type { ExerciseDraft, DraftUpdate } from "./draft-storage";
+import { SubmissionError } from "./submission-error";
 import { MemoSections } from "./memo-sections";
 import { formatMemoAnswer, memoSectionsFor } from "@/lib/exercises/memo-extraction/template";
 
@@ -24,8 +27,10 @@ type Problem = {
   };
 };
 
-export function AnswerEditor({ problem, slug }: { problem: Problem; slug: string }) {
-  const startRef = useRef(Date.now());
+export function AnswerEditor({ problem, slug, draft, updateDraft, onSubmitted }: {
+  problem: Problem; slug: string; draft: ExerciseDraft; updateDraft: DraftUpdate; onSubmitted: (id: number) => void;
+}) {
+  const submittingRef = useRef(false);
   const sections = useMemo(
     () => [...problem.userVisiblePayload.requiredAnswerSections].sort((a, b) => a.order - b.order),
     [problem]
@@ -36,61 +41,45 @@ export function AnswerEditor({ problem, slug }: { problem: Problem; slug: string
   const memo = slug === "MEMO_EXTRACTION";
   const memoSections = useMemo(() => memoSectionsFor(sections), [sections]);
 
-  const [step, setStep] = useState(0);
-  const [answers, setAnswers] = useState<Record<number, string>>({});
-  const [memoAnswers, setMemoAnswers] = useState<string[]>(() => memoSections.map(() => ""));
-  const [text, setText] = useState("");
+  const step = Math.min(draft.step, Math.max(0, sections.length - 1));
+  const answers = draft.sectionAnswers;
+  const memoAnswers = memoSections.map((_, i) => draft.memoAnswers[i] ?? "");
+  const text = draft.text;
   const [submitting, setSubmitting] = useState(false);
   const [stopped, setStopped] = useState(false);
   const [attemptId, setAttemptId] = useState<number | null>(null);
-  const [started, setStarted] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   async function submit(responseText: string) {
+    if (submittingRef.current) return;
+    submittingRef.current = true;
     setSubmitting(true);
     setStopped(true); // freeze the timer the moment the user commits the final answer
     setError(null);
     try {
-      const elapsed = Math.floor((Date.now() - startRef.current) / 1000);
-      const attemptRes = await fetch("/api/attempts", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ problemId: problem.id, responseText, timeSpentSeconds: elapsed })
+      const elapsed = Math.floor((Date.now() - (draft.startedAt ?? Date.now())) / 1000);
+      const aid = await saveAttemptAndEvaluate({
+        problemId: problem.id,
+        clientSubmissionId: draft.clientSubmissionId,
+        responseText,
+        timeSpentSeconds: elapsed
       });
-      if (!attemptRes.ok) throw new Error("Failed to save attempt");
-      const { attemptId: aid } = await attemptRes.json();
       setAttemptId(aid);
-      // Kick off evaluation; it runs in the background (may exceed Cloudflare's
-      // request cap), so we don't await the result here — the feedback panel
-      // polls for it.
-      const evalRes = await fetch(`/api/attempts/${aid}/evaluate`, { method: "POST" });
-      if (!evalRes.ok) {
-        const msg = await evalRes.json().catch(() => ({}));
-        throw new Error(`Couldn’t start evaluation: ${msg.message ?? evalRes.status}`);
-      }
-      setStarted(true);
+      onSubmitted(aid);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
       setStopped(false); // submit failed; resume the timer while the user is still working
     } finally {
+      submittingRef.current = false;
       setSubmitting(false);
     }
   }
 
-  if (started && attemptId) {
+  if (attemptId) {
     return <FeedbackPanel attemptId={attemptId} />;
   }
 
-  const errorBlock = error ? (
-    <div className="rounded-md border border-destructive bg-destructive/10 p-3 text-sm text-destructive">
-      {error}
-      {attemptId ? (
-        <p className="mt-1 text-xs">
-          Your attempt was saved (id {attemptId}). You can retry evaluation from history.
-        </p>
-      ) : null}
-    </div>
-  ) : null;
+  const errorBlock = <SubmissionError error={error} problemId={problem.id} />;
 
   function shell(body: ReactNode) {
     return (
@@ -98,7 +87,7 @@ export function AnswerEditor({ problem, slug }: { problem: Problem; slug: string
         <CardHeader>
           <CardTitle className="flex items-baseline justify-between gap-4">
             <span>{problem.userVisiblePayload.title}</span>
-            <Timer minutes={problem.userVisiblePayload.timeboxMinutes} running={!stopped} />
+            <Timer minutes={problem.userVisiblePayload.timeboxMinutes} running={!stopped} startedAt={draft.startedAt ?? undefined} />
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-6">
@@ -120,7 +109,7 @@ export function AnswerEditor({ problem, slug }: { problem: Problem; slug: string
         <MemoSections
           sections={memoSections}
           values={memoAnswers}
-          onChange={(i, v) => setMemoAnswers((prev) => prev.map((a, j) => (j === i ? v : a)))}
+          onChange={(i, v) => updateDraft({ memoAnswers: memoAnswers.map((a, j) => (j === i ? v : a)) })}
           disabled={submitting}
         />
         <div className="flex items-center gap-3">
@@ -145,7 +134,7 @@ export function AnswerEditor({ problem, slug }: { problem: Problem; slug: string
       <>
         <Textarea
           value={text}
-          onChange={(e) => setText(e.target.value)}
+          onChange={(e) => updateDraft({ text: e.target.value })}
           placeholder="Write your answer here…"
           className="min-h-[320px]"
           disabled={submitting}
@@ -166,7 +155,7 @@ export function AnswerEditor({ problem, slug }: { problem: Problem; slug: string
   const currentFilled = (answers[current.order] ?? "").trim().length > 0;
 
   function handleNext() {
-    setStep((s) => Math.min(s + 1, sections.length - 1));
+    updateDraft({ step: Math.min(step + 1, sections.length - 1) });
   }
 
   function handleFinalSubmit() {
@@ -191,7 +180,7 @@ export function AnswerEditor({ problem, slug }: { problem: Problem; slug: string
         <Textarea
           id={`answer-${current.order}`}
           value={answers[current.order] ?? ""}
-          onChange={(e) => setAnswers((prev) => ({ ...prev, [current.order]: e.target.value }))}
+          onChange={(e) => updateDraft({ sectionAnswers: { ...answers, [current.order]: e.target.value } })}
           placeholder={`Your ${current.title.toLowerCase()}…`}
           disabled={submitting}
           className="min-h-[160px]"
@@ -199,7 +188,7 @@ export function AnswerEditor({ problem, slug }: { problem: Problem; slug: string
       </div>
       <div className="flex items-center gap-3">
         {step > 0 ? (
-          <Button variant="outline" onClick={() => setStep((s) => Math.max(s - 1, 0))} disabled={submitting}>
+          <Button variant="outline" onClick={() => updateDraft({ step: Math.max(step - 1, 0) })} disabled={submitting}>
             Back
           </Button>
         ) : null}

@@ -1,3 +1,5 @@
+import { z } from "zod";
+import { EVALUATOR_BOUNDARY } from "../contracts";
 import { ExerciseSlug, ModelRunPurpose, PromptRole } from "@prisma/client";
 import { loadActivePrompt } from "@/lib/prompts/registry";
 import { runStructured } from "@/lib/openai/run-model";
@@ -8,33 +10,20 @@ import type {
   LsatQuestionResult,
   LsatPublicQuestion
 } from "@/lib/exercises/types";
-import { LsatEvaluationSchema } from "./schemas";
-
-type KeyAnswer = {
-  number: number;
-  correctChoice: string;
-  explanation: string;
-  distractorAnalyses?: Record<string, string>;
-  questionType?: string;
-};
-type UserAnswer = { number: number; choice: string; reasoning: string };
+import { LsatEvaluationSchema, LsatUserAnswerSchema } from "./schemas";
 
 const normChoice = (s: string | undefined) => (s ?? "").trim().toUpperCase();
+const KeySchema = z.array(z.object({
+  number: z.number().int().positive(),
+  correctChoice: z.enum(["A", "B", "C", "D", "E"]),
+  explanation: z.string(),
+  questionType: z.string().optional()
+})).min(1);
 
-function parseUserAnswers(raw: string): UserAnswer[] {
-  try {
-    const parsed = JSON.parse(raw) as { answers?: UserAnswer[] };
-    if (Array.isArray(parsed.answers)) {
-      return parsed.answers.map((a) => ({
-        number: Number(a.number),
-        choice: String(a.choice ?? ""),
-        reasoning: String(a.reasoning ?? "")
-      }));
-    }
-  } catch {
-    /* fall through */
+function assertUniqueNumbers(items: Array<{ number: number }>, label: string): void {
+  if (new Set(items.map((item) => item.number)).size !== items.length) {
+    throw new Error(`LSAT evaluation: duplicate question numbers in ${label}`);
   }
-  return [];
 }
 
 export async function evaluateLsatAttempt(input: EvaluateInput): Promise<EvaluateResult> {
@@ -43,13 +32,20 @@ export async function evaluateLsatAttempt(input: EvaluateInput): Promise<Evaluat
   const ev = await loadActivePrompt({ role: PromptRole.EVALUATOR, exerciseSlug: ExerciseSlug.LSAT_LOGICAL_REASONING });
 
   const publicQuestions = (input.problem.questions ?? []) as LsatPublicQuestion[];
-  const key = ((input.problem.hiddenAnswerKey as { answers?: KeyAnswer[] }).answers ?? []) as KeyAnswer[];
-  // No answer key → can't grade. Throw so the attempt is marked EVAL_FAILED and
-  // retryable, rather than silently persisting a 0/10.
-  if (key.length === 0) {
-    throw new Error("LSAT evaluation: problem has no answer key to grade against");
+  const key = KeySchema.parse((input.problem.hiddenAnswerKey as { answers?: unknown }).answers);
+  assertUniqueNumbers(key, "answer key");
+  assertUniqueNumbers(publicQuestions, "problem");
+  const questionNumbers = new Set(publicQuestions.map((q) => q.number));
+  if (key.length !== publicQuestions.length || key.some((k) => !questionNumbers.has(k.number))) {
+    throw new Error("LSAT evaluation: answer key does not match problem questions");
   }
-  const userAnswers = parseUserAnswers(input.userAnswer);
+  // Invalid stored answers must fail visibly and remain retryable, not silently
+  // turn into an empty submission and permanently record a zero score.
+  const userAnswers = LsatUserAnswerSchema.parse(JSON.parse(input.userAnswer)).answers;
+  assertUniqueNumbers(userAnswers, "submission");
+  if (userAnswers.some((answer) => !questionNumbers.has(answer.number))) {
+    throw new Error("LSAT evaluation: submission contains an unknown question");
+  }
 
   const byNumber = <T extends { number: number }>(arr: T[]) => new Map(arr.map((x) => [x.number, x]));
   const pubByNum = byNumber(publicQuestions);
@@ -84,13 +80,17 @@ export async function evaluateLsatAttempt(input: EvaluateInput): Promise<Evaluat
     timeoutMs: cfg.openai.evalTimeoutMs,
     input: [
       { role: "system", content: base.content },
-      { role: "system", content: ev.content },
+      { role: "system", content: `${ev.content}\n\n${EVALUATOR_BOUNDARY}` },
       { role: "user", content: JSON.stringify(modelPayload, null, 2) }
     ]
   });
 
   const model = result.parsed;
+  assertUniqueNumbers(model.questions, "model feedback");
   const modelByNum = byNumber(model.questions);
+  if (key.some((k) => !modelByNum.has(k.number))) {
+    throw new Error("LSAT evaluation: model feedback is missing questions");
+  }
 
   // Deterministic correctness + per-question merge.
   const questions: LsatQuestionResult[] = key.map((k) => {

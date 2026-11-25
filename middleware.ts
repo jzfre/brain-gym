@@ -13,6 +13,8 @@ export async function middleware(req: NextRequest) {
   requestHeaders.set("x-pathname", pathname);
   const pass = NextResponse.next({ request: { headers: requestHeaders } });
 
+  if (pathname === "/api/health") return pass;
+
   if (PUBLIC_PREFIXES.some((p) => pathname === p || pathname.startsWith(p + "/"))) {
     return pass;
   }
@@ -34,6 +36,6 @@ export async function middleware(req: NextRequest) {
 }
 
 export const config = {
-  // Skip Next.js internals + static assets
-  matcher: ["/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico|css|js|map)).*)"]
+  // Protect dynamic routes even when an ID happens to end in a file extension.
+  matcher: ["/((?!_next/static/|_next/image|favicon\\.ico$).*)"]
 };

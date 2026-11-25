@@ -8,11 +8,20 @@ import {
   passwordMatches
 } from "@/lib/auth";
 
+import { loginRetryAfter, recordLoginFailure } from "@/lib/auth/login-limit";
+
 export const runtime = "nodejs";
 
-const Body = z.object({ password: z.string().min(1) });
+const Body = z.object({ password: z.string().min(1).max(1024) });
 
 export async function POST(req: Request) {
+  const retryAfter = loginRetryAfter();
+  if (retryAfter) {
+    return NextResponse.json(
+      { error: "too_many_attempts" },
+      { status: 429, headers: { "Retry-After": String(retryAfter) } }
+    );
+  }
   const json = await req.json().catch(() => ({}));
   const parsed = Body.safeParse(json);
   if (!parsed.success) {
@@ -21,6 +30,7 @@ export async function POST(req: Request) {
   const cfg = getConfig();
 
   if (!(await passwordMatches(parsed.data.password, cfg.appPassword))) {
+    recordLoginFailure();
     return NextResponse.json({ error: "invalid_password" }, { status: 401 });
   }
 

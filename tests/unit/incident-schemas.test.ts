@@ -1,3 +1,4 @@
+import { INCIDENT_DIMENSIONS } from "@/lib/exercises/contracts";
 import { describe, it, expect } from "vitest";
 import { IncidentGeneratedProblemSchema, IncidentEvaluationSchema } from "@/lib/exercises/incident-response/schemas";
 
@@ -24,7 +25,7 @@ const baseProblem = {
     expectedNumericRanges: [{ metric: "qps", range: "100-200" }]
   },
   rubric: {
-    dimensions: eleven((i) => ({ name: `Dim${i}`, maxScore: 10, description: "" }))
+    dimensions: eleven((i) => ({ name: INCIDENT_DIMENSIONS[i], maxScore: 10, description: "Assess this dimension." }))
   },
   tags: ["queue", "vendor"],
   sourceCitations: [],

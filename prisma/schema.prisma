@@ -44,20 +44,33 @@ enum ModelRunStatus {
   ERROR
 }
 
+enum BackgroundJobKind {
+  GENERATION
+  EVALUATION
+}
+
+enum BackgroundJobStatus {
+  QUEUED
+  RUNNING
+  SUCCEEDED
+  FAILED
+}
+
 model User {
-  id          String   @id @default(uuid())
-  email       String   @unique
-  displayName String
-  createdAt   DateTime @default(now())
-  attempts    Attempt[]
+  id             String          @id @default(uuid())
+  email          String          @unique
+  displayName    String
+  createdAt      DateTime        @default(now())
+  attempts       Attempt[]
+  backgroundJobs BackgroundJob[]
 }
 
 model ExerciseType {
-  id          String       @id @default(uuid())
-  slug        ExerciseSlug @unique
+  id          String          @id @default(uuid())
+  slug        ExerciseSlug    @unique
   name        String
   description String
-  active      Boolean      @default(true)
+  active      Boolean         @default(true)
   problems    Problem[]
   prompts     PromptVersion[]
 }
@@ -79,9 +92,9 @@ model PromptVersion {
 }
 
 model Problem {
-  id                        String        @id @default(uuid())
+  id                        String                       @id @default(uuid())
   exerciseTypeId            String
-  exerciseType              ExerciseType  @relation(fields: [exerciseTypeId], references: [id])
+  exerciseType              ExerciseType                 @relation(fields: [exerciseTypeId], references: [id])
   title                     String
   promptText                String
   userVisiblePayload        Json
@@ -91,16 +104,16 @@ model Problem {
   suggestedPacing           Json
   requiredAnswerSections    Json
   difficulty                Difficulty
-  tags                      String[]      @default([])
-  sourceKind                String        @default("generated")
+  tags                      String[]                     @default([])
+  sourceKind                String                       @default("generated")
   uniquenessHash            String
   embedding                 Unsupported("vector(1536)")?
-  isNearDuplicate           Boolean       @default(false)
+  isNearDuplicate           Boolean                      @default(false)
   nearestSimilarity         Float?
   generatedByModel          String
   generationPromptVersionId String
-  generationPromptVersion   PromptVersion @relation("ProblemGenerationPrompt", fields: [generationPromptVersionId], references: [id])
-  createdAt                 DateTime      @default(now())
+  generationPromptVersion   PromptVersion                @relation("ProblemGenerationPrompt", fields: [generationPromptVersionId], references: [id])
+  createdAt                 DateTime                     @default(now())
   sources                   ProblemSource[]
   attempts                  Attempt[]
 
@@ -120,17 +133,19 @@ model ProblemSource {
 }
 
 model Attempt {
-  id               Int           @id @default(autoincrement())
-  userId           String
-  user             User          @relation(fields: [userId], references: [id])
-  problemId        String
-  problem          Problem       @relation(fields: [problemId], references: [id])
-  responseText     String
-  timeSpentSeconds Int
-  submittedAt      DateTime      @default(now())
-  status           AttemptStatus @default(SUBMITTED)
-  evaluation       Evaluation?
+  id                 Int           @id @default(autoincrement())
+  userId             String
+  user               User          @relation(fields: [userId], references: [id])
+  problemId          String
+  problem            Problem       @relation(fields: [problemId], references: [id])
+  responseText       String
+  clientSubmissionId String?       @db.Uuid
+  timeSpentSeconds   Int
+  submittedAt        DateTime      @default(now())
+  status             AttemptStatus @default(SUBMITTED)
+  evaluation         Evaluation?
 
+  @@unique([userId, clientSubmissionId])
   @@index([userId, submittedAt])
 }
 
@@ -176,4 +191,33 @@ model ModelRun {
   status          ModelRunStatus  @default(PENDING)
   error           String?
   createdAt       DateTime        @default(now())
+  backgroundJobId String?         @db.Uuid
+  backgroundJob   BackgroundJob?  @relation(fields: [backgroundJobId], references: [id], onDelete: SetNull)
+  jobStep         Int?
+
+  @@unique([backgroundJobId, jobStep])
+}
+
+model BackgroundJob {
+  id             String              @id @default(uuid()) @db.Uuid
+  kind           BackgroundJobKind
+  status         BackgroundJobStatus @default(QUEUED)
+  userId         String
+  user           User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  payload        Json
+  checkpoint     Json?
+  result         Json?
+  error          String?
+  dedupeKey      String?
+  leaseToken     String?             @db.Uuid
+  leaseExpiresAt DateTime?
+  attempts       Int                 @default(0)
+  createdAt      DateTime            @default(now())
+  updatedAt      DateTime            @default(now()) @updatedAt
+  completedAt    DateTime?
+  modelRuns      ModelRun[]
+
+  @@unique([userId, kind, dedupeKey])
+  @@index([status, leaseExpiresAt, createdAt])
+  @@index([userId, kind, createdAt])
 }

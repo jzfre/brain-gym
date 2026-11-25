@@ -28,3 +28,6 @@ coverage/
 
 # Docker volumes (if mounted locally)
 .pgdata/
+
+# Opt-in live model reports (may contain private model outputs)
+artifacts/model-evals/

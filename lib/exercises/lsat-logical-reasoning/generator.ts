@@ -67,11 +67,13 @@ export async function generateLsatProblem(input: GenerateInput): Promise<Generat
   });
 
   const p = result.parsed;
-  const shuffledQuestions = p.questions.map((question) => shuffleLsatQuestion(question));
+  const shuffledQuestions = p.questions.map((question, index) =>
+    shuffleLsatQuestion({ ...question, number: index + 1 })
+  );
 
   // Split each generated question into the public part (shown to the user) and
-  // the hidden answer key. Answer order is randomized in application code so
-  // correctness never depends on the model distributing answer letters well.
+  // the hidden answer key. Randomize only when the conservative prose scan
+  // finds no option references; otherwise preserve ordering and meaning.
   const questions: LsatPublicQuestion[] = shuffledQuestions.map((q) => ({
     number: q.number,
     stimulus: q.stimulus,
@@ -89,7 +91,7 @@ export async function generateLsatProblem(input: GenerateInput): Promise<Generat
 
   const problem: GenerateResult["problem"] = {
     title: p.title,
-    difficulty: p.difficulty,
+    difficulty: input.difficulty,
     // Derived from the actual set size, not trusted to the model: the timer
     // and pacing UI depend on it being exactly per-question budget × count.
     timeboxMinutes: questions.length * MINUTES_PER_QUESTION,

@@ -19,23 +19,10 @@ echo "[entrypoint] db reachable"
 echo "[entrypoint] applying migrations..."
 prisma migrate deploy
 
-# Seed only when the DB is empty (ExerciseType has zero rows). Protects any
-# hand-edited prompts/exercise rows from being overwritten on every restart.
-echo "[entrypoint] checking whether to seed..."
-COUNT=$(node -e '
-const { PrismaClient } = require("@prisma/client");
-const p = new PrismaClient();
-p.exerciseType.count()
-  .then((n) => { process.stdout.write(String(n)); return p.$disconnect(); })
-  .catch((e) => { console.error(e); process.exit(1); });
-')
-
-if [ "${COUNT}" = "0" ]; then
-  echo "[entrypoint] empty DB, seeding..."
-  tsx prisma/seed.ts
-else
-  echo "[entrypoint] DB already populated (${COUNT} exercise types), skipping seed"
-fi
+# Repair partial initialization without mutating existing prompts or metadata.
+# The seed is transactional and insert-only for existing installations.
+echo "[entrypoint] ensuring required seed data exists..."
+tsx prisma/seed.ts
 
 echo "[entrypoint] starting Next.js on :${PORT:-3000}"
 exec node server.js

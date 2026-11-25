@@ -5,7 +5,7 @@ import type { LsatGeneratedQuestion } from "@/lib/exercises/lsat-logical-reasoni
 const question: LsatGeneratedQuestion = {
   number: 1,
   stimulus:
-    "A city replaced its bus fleet and ridership rose the following quarter, so officials concluded the new buses caused the increase.",
+    "The city replaced its bus fleet and ridership rose the following quarter, so officials concluded the new buses caused the increase.",
   questionStem: "Which one of the following is an assumption required by the argument?",
   choices: { A: "alpha", B: "beta", C: "gamma", D: "delta", E: "epsilon" },
   questionType: "Necessary assumption",
@@ -53,4 +53,24 @@ describe("shuffleLsatQuestion", () => {
 
     expect(question).toEqual(original);
   });
+});
+
+describe("label references preserve question meaning", () => {
+  it.each(["explanation", "stimulus", "questionStem"] as const)("does not shuffle when %s references a letter", (field) => {
+    const source = { ...question, [field]: "Option A is correct, whereas C is not." };
+    expect(shuffleLsatQuestion(source, () => 0)).toEqual(source);
+  });
+
+  it("keeps self-referential options and free-text analysis aligned", () => {
+    const source = { ...question, choices: { ...question.choices, D: "Neither A nor B" } };
+    expect(shuffleLsatQuestion(source, () => 0)).toEqual(source);
+    const withAnalysis = { ...question, distractorAnalyses: { ...question.distractorAnalyses, B: "Unlike A, this requires too much." } };
+    expect(shuffleLsatQuestion(withAnalysis, () => 0)).toEqual(withAnalysis);
+  });
+});
+
+
+it.each(["choice b is correct", "The first option is correct", "Option two is correct", "All of the above", "Both preceding choices", "The previous answer is wrong"])("preserves order for potentially positional wording: %s", (explanation) => {
+  const source = { ...question, explanation };
+  expect(shuffleLsatQuestion(source, () => 0)).toEqual(source);
 });

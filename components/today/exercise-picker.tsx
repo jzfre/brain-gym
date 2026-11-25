@@ -1,6 +1,19 @@
 "use client";
 
-import { useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { GenerationStopped, pollForProblem } from "./requests";
+import {
+  clearPendingGeneration,
+  generationRecoveryPath,
+  parsePendingGeneration,
+  type GenerationRequest,
+  type PendingGeneration,
+  readPendingGeneration,
+  validGenerationId,
+  writePendingGeneration
+} from "./generation-storage";
+import { useExerciseDraft } from "./use-exercise-draft";
+import { useRouter } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
@@ -17,45 +30,7 @@ const EXERCISES = [
   { slug: "LSAT_LOGICAL_REASONING", name: "LSAT" }
 ] as const;
 
-const POLL_INTERVAL_MS = 3000;
-// Client-side give-up point, NOT the server's limit: a healthy generation can
-// run up to OPENAI_TIMEOUT_MS × 2 SDK attempts (~40 min) per model call, and
-// the dedup loop may issue several calls. The job keeps running server-side
-// past this deadline; a finished problem lands in Admin → Problems.
-const POLL_DEADLINE_MS = 45 * 60 * 1000;
-
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-// Generation runs server-side as a background job (it can take minutes —
-// far past Cloudflare's 100s proxy limit), so we poll the job's status with
-// cheap sub-second requests until it settles. Same cadence as feedback-panel.
-async function pollForProblem(jobId: string): Promise<string> {
-  const deadline = Date.now() + POLL_DEADLINE_MS;
-  while (Date.now() < deadline) {
-    await sleep(POLL_INTERVAL_MS);
-    let d: { status?: string; problemId?: string | null; error?: string | null };
-    try {
-      const r = await fetch(`/api/problems/generate/${jobId}`);
-      if (r.status === 404) {
-        throw new Error("Generation was lost (server restarted) — please retry.");
-      }
-      d = await r.json();
-    } catch (e) {
-      if (e instanceof Error && e.message.startsWith("Generation was lost")) throw e;
-      continue; // transient network error — keep polling
-    }
-    if (d.status === "succeeded" && d.problemId) return d.problemId;
-    if (d.status === "failed") throw new Error(d.error ?? "generation failed");
-  }
-  throw new Error(
-    "Still generating after 45 minutes — the server keeps working and a finished problem " +
-      "will appear under Admin → Problems. Retrying now would start a second generation."
-  );
-}
-
-type ProblemPayload = {
+export type ProblemPayload = {
   id: string;
   // The exercise the problem was generated for — not the live tab, which the
   // user can switch while a generation is running.
@@ -70,69 +45,272 @@ type ProblemPayload = {
   };
 };
 
-export function ExercisePicker() {
+export function ExercisePicker({
+  initialProblem = null
+}: {
+  initialProblem?: ProblemPayload | null;
+}) {
+  const generationRef = useRef<AbortController | null>(null);
   const [slug, setSlug] = useState<(typeof EXERCISES)[number]["slug"]>("MEMO_EXTRACTION");
   const [difficulty, setDifficulty] = useState<"EASY" | "MEDIUM" | "HARD">("MEDIUM");
   const [generating, setGenerating] = useState(false);
-  const [problem, setProblem] = useState<ProblemPayload | null>(null);
-  const [exerciseStarted, setExerciseStarted] = useState(false);
+  const [recoveryReady, setRecoveryReady] = useState(false);
+  const [pendingGeneration, setPendingGeneration] = useState<PendingGeneration | null>(null);
+  const pendingJobId = pendingGeneration?.jobId ?? null;
+  const [generationAuthRequired, setGenerationAuthRequired] = useState(false);
+  const [problem, setProblem] = useState<ProblemPayload | null>(initialProblem);
+  const router = useRouter();
+  const { draft, updateDraft, clearDraft, storageUnavailable } = useExerciseDraft(problem?.id);
+  function onSubmitted(attemptId: number) {
+    clearDraft();
+    router.replace(`/history/${attemptId}`);
+  }
   const [error, setError] = useState<string | null>(null);
 
-  async function handleGenerate() {
-    const exerciseSlug = slug;
-    setGenerating(true);
-    setError(null);
-    setProblem(null);
-    setExerciseStarted(false);
-    try {
-      const res = await fetch("/api/problems/generate", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ exerciseSlug, difficulty })
-      });
-      if (res.status !== 202) {
-        const msg = await res.json().catch(() => ({}));
-        throw new Error(msg.message ?? `HTTP ${res.status}`);
+  const rememberJob = useCallback((jobId: string, request?: GenerationRequest) => {
+    let pending: PendingGeneration = { version: 1, jobId };
+    if (request) pending = { version: 1, ...request, jobId };
+    else {
+      try {
+        const saved = readPendingGeneration(window.localStorage);
+        if (saved?.jobId === jobId) pending = saved;
+      } catch {
+        /* Restricted storage. */
       }
-      const { jobId } = await res.json();
-      const problemId = await pollForProblem(jobId);
-      const probRes = await fetch(`/api/problems/${problemId}`);
-      const prob = await probRes.json();
-      setProblem({ id: prob.id, slug: exerciseSlug, userVisiblePayload: prob.userVisiblePayload });
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-    } finally {
-      setGenerating(false);
     }
+    setPendingGeneration(pending);
+    if ("clientGenerationId" in pending) {
+      setSlug(pending.exerciseSlug);
+      setDifficulty(pending.difficulty);
+    }
+    try {
+      writePendingGeneration(window.localStorage, pending);
+    } catch {
+      /* Restricted storage. */
+    }
+    window.history.replaceState(null, "", generationRecoveryPath(pending));
+  }, []);
+
+  const forgetJob = useCallback((jobId: string) => {
+    setPendingGeneration(null);
+    try {
+      clearPendingGeneration(window.localStorage, jobId);
+    } catch {
+      /* Restricted storage. */
+    }
+  }, []);
+
+  const reportGenerationError = useCallback(
+    (error: unknown, jobId?: string) => {
+      setError(error instanceof Error ? error.message : String(error));
+      setGenerationAuthRequired(error instanceof GenerationStopped && error.kind === "auth");
+      if (jobId && error instanceof GenerationStopped && error.kind !== "auth") {
+        forgetJob(jobId);
+        window.history.replaceState(null, "", "/today");
+      }
+    },
+    [forgetJob]
+  );
+
+  const loadGeneratedProblem = useCallback(
+    async (jobId: string, controller: AbortController) => {
+      const problemId = await pollForProblem(jobId, controller.signal);
+      const response = await fetch(`/api/problems/${problemId}`, { signal: controller.signal });
+      if (response.status === 401 || response.status === 403) {
+        throw new GenerationStopped("Your session expired. Sign in again to continue.", "auth");
+      }
+      if (!response.ok)
+        throw new Error(
+          `Couldn’t load the generated problem (${response.status}). Check again to reopen the same generation.`
+        );
+      const generated = await response.json();
+      if (controller.signal.aborted) return;
+      const exerciseSlug = generated.exerciseType?.slug;
+      if (!EXERCISES.some((exercise) => exercise.slug === exerciseSlug))
+        throw new Error("The generated exercise type is unavailable. Check again.");
+      setProblem({
+        id: generated.id,
+        slug: exerciseSlug,
+        userVisiblePayload: generated.userVisiblePayload
+      });
+      forgetJob(jobId);
+      window.history.replaceState(null, "", `/today?problemId=${encodeURIComponent(generated.id)}`);
+    },
+    [forgetJob]
+  );
+
+  const resumeGeneration = useCallback(
+    async (jobId: string) => {
+      if (generationRef.current && !generationRef.current.signal.aborted) return;
+      const controller = new AbortController();
+      generationRef.current = controller;
+      rememberJob(jobId);
+      setGenerating(true);
+      setError(null);
+      setGenerationAuthRequired(false);
+      try {
+        await loadGeneratedProblem(jobId, controller);
+      } catch (error) {
+        if (!controller.signal.aborted) reportGenerationError(error, jobId);
+      } finally {
+        if (!controller.signal.aborted) setGenerating(false);
+        if (generationRef.current === controller) generationRef.current = null;
+      }
+    },
+    [loadGeneratedProblem, rememberJob, reportGenerationError]
+  );
+
+  const rememberRequest = useCallback((request: GenerationRequest) => {
+    const pending = { version: 1 as const, ...request };
+    setPendingGeneration(pending);
+    setSlug(request.exerciseSlug);
+    setDifficulty(request.difficulty);
+    try {
+      writePendingGeneration(window.localStorage, pending);
+    } catch {
+      /* Restricted storage. */
+    }
+    window.history.replaceState(null, "", generationRecoveryPath(pending));
+  }, []);
+
+  const submitGeneration = useCallback(
+    async (request: GenerationRequest) => {
+      if (generationRef.current && !generationRef.current.signal.aborted) return;
+      const controller = new AbortController();
+      generationRef.current = controller;
+      setGenerating(true);
+      setError(null);
+      setGenerationAuthRequired(false);
+      setProblem(null);
+      let acceptedJobId: string | undefined;
+      rememberRequest(request);
+      try {
+        const response = await fetch("/api/problems/generate", {
+          method: "POST",
+          signal: controller.signal,
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            clientGenerationId: request.clientGenerationId,
+            exerciseSlug: request.exerciseSlug,
+            difficulty: request.difficulty
+          })
+        });
+        if (response.status === 401 || response.status === 403) {
+          throw new GenerationStopped("Your session expired. Sign in again to continue.", "auth");
+        }
+        if (response.status !== 202) {
+          const message = await response.json().catch(() => ({}));
+          throw new Error(message.message ?? `HTTP ${response.status}`);
+        }
+        const { jobId } = await response.json();
+        if (controller.signal.aborted) return;
+        if (!validGenerationId(jobId)) throw new Error("Invalid generation response.");
+        acceptedJobId = jobId;
+        // Persist before polling, including the URL fallback for blocked storage.
+        rememberJob(jobId, request);
+        await loadGeneratedProblem(jobId, controller);
+      } catch (error) {
+        if (!controller.signal.aborted) reportGenerationError(error, acceptedJobId);
+      } finally {
+        if (!controller.signal.aborted) setGenerating(false);
+        if (generationRef.current === controller) generationRef.current = null;
+      }
+    },
+    [loadGeneratedProblem, rememberJob, rememberRequest, reportGenerationError]
+  );
+
+  useEffect(() => {
+    // Explicit recovery links win over another tab's latest stored request.
+    if (!initialProblem) {
+      const query = new URL(window.location.href).searchParams;
+      const jobId = query.get("jobId");
+      const requestId = query.get("generationId");
+      let pending: PendingGeneration | null = null;
+      if (jobId !== null) pending = validGenerationId(jobId) ? { version: 1, jobId } : null;
+      else if (requestId !== null)
+        pending = parsePendingGeneration({
+          version: 1,
+          clientGenerationId: requestId,
+          exerciseSlug: query.get("exerciseSlug"),
+          difficulty: query.get("difficulty")
+        });
+      else {
+        try {
+          pending = readPendingGeneration(window.localStorage);
+        } catch {
+          /* Restricted storage. */
+        }
+      }
+      if (pending?.jobId) void resumeGeneration(pending.jobId);
+      else if (pending && "clientGenerationId" in pending) void submitGeneration(pending);
+      else if (jobId !== null || requestId !== null) setError("Invalid generation recovery link.");
+    }
+    setRecoveryReady(true);
+    return () => generationRef.current?.abort();
+  }, [initialProblem, resumeGeneration, submitGeneration]);
+
+  function handleGenerate() {
+    if (pendingJobId) void resumeGeneration(pendingJobId);
+    else if (pendingGeneration && "clientGenerationId" in pendingGeneration)
+      void submitGeneration(pendingGeneration);
+    else
+      void submitGeneration({
+        clientGenerationId: crypto.randomUUID(),
+        exerciseSlug: slug,
+        difficulty
+      });
   }
 
-  if (problem && !exerciseStarted) {
+  if (problem && (!draft || draft.startedAt === null)) {
     return (
       <ReadyDialog
         title={problem.userVisiblePayload.title}
         minutes={problem.userVisiblePayload.timeboxMinutes}
-        onStart={() => setExerciseStarted(true)}
+        disabled={!draft}
+        onStart={() => updateDraft({ startedAt: Date.now() })}
       />
     );
   }
 
-  if (problem) {
+  if (problem && draft) {
+    const warning = storageUnavailable ? (
+      <p role="alert" className="mb-4 rounded-md border p-3 text-sm text-destructive">
+        Your browser couldn’t save this draft. Keep this page open until you submit.
+      </p>
+    ) : null;
     const q = problem.userVisiblePayload.questions;
     if (problem.slug === "LSAT_LOGICAL_REASONING" && q && q.length > 0) {
       return (
-        <LsatSetRunner
-          problem={{
-            id: problem.id,
-            userVisiblePayload: {
-              title: problem.userVisiblePayload.title,
-              timeboxMinutes: problem.userVisiblePayload.timeboxMinutes,
-              questions: q
-            }
-          }}
-        />
+        <>
+          {warning}
+          <LsatSetRunner
+            draft={draft}
+            updateDraft={updateDraft}
+            onSubmitted={onSubmitted}
+            problem={{
+              id: problem.id,
+              userVisiblePayload: {
+                title: problem.userVisiblePayload.title,
+                timeboxMinutes: problem.userVisiblePayload.timeboxMinutes,
+                questions: q
+              }
+            }}
+          />
+        </>
       );
     }
-    return <AnswerEditor problem={problem} slug={problem.slug} />;
+    return (
+      <>
+        {warning}
+        <AnswerEditor
+          problem={problem}
+          slug={problem.slug}
+          draft={draft}
+          updateDraft={updateDraft}
+          onSubmitted={onSubmitted}
+        />
+      </>
+    );
   }
 
   return (
@@ -144,7 +322,7 @@ export function ExercisePicker() {
         <Tabs value={slug} onValueChange={(v) => setSlug(v as typeof slug)}>
           <TabsList>
             {EXERCISES.map((e) => (
-              <TabsTrigger key={e.slug} value={e.slug}>
+              <TabsTrigger key={e.slug} value={e.slug} disabled={generating || !!pendingGeneration}>
                 {e.name}
               </TabsTrigger>
             ))}
@@ -158,6 +336,7 @@ export function ExercisePicker() {
           <Label>Difficulty</Label>
           <RadioGroup
             className="flex gap-6"
+            disabled={generating || !!pendingGeneration}
             value={difficulty}
             onValueChange={(v) => setDifficulty(v as typeof difficulty)}
           >
@@ -170,11 +349,27 @@ export function ExercisePicker() {
           </RadioGroup>
         </div>
 
-        <Button onClick={handleGenerate} disabled={generating}>
-          {generating ? "Generating…" : "Generate problem"}
+        <Button onClick={handleGenerate} disabled={generating || !recoveryReady}>
+          {generating ? "Generating…" : pendingGeneration ? "Check generation" : "Generate problem"}
         </Button>
-
-        {error && <p className="text-sm text-destructive">Error: {error}</p>}
+        {pendingGeneration && (
+          <p role="status" className="text-sm text-muted-foreground">
+            Your generation request is saved. You can reload or return to Today to resume it.
+          </p>
+        )}
+        {error && (
+          <p role="alert" className="text-sm text-destructive">
+            Error: {error}
+          </p>
+        )}
+        {generationAuthRequired && (
+          <a
+            className="block text-sm underline"
+            href={`/login?next=${encodeURIComponent(pendingGeneration ? generationRecoveryPath(pendingGeneration) : "/today")}`}
+          >
+            Sign in again
+          </a>
+        )}
       </CardContent>
     </Card>
   );

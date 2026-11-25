@@ -1,120 +1,42 @@
 import { NextResponse } from "next/server";
-import { AttemptStatus, PromptRole, type Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db/client";
-import { getMode } from "@/lib/exercises/registry";
 import { getConfig } from "@/lib/config";
-import { loadActivePrompt } from "@/lib/prompts/registry";
-import { clearInFlight, isInFlight, markInFlight } from "@/lib/evaluation/in-flight";
-import type { GeneratedProblemCommon } from "@/lib/exercises/types";
+import { enqueueJob, JobCapacityError } from "@/lib/jobs/store";
+import { wakeWorker } from "@/lib/jobs/worker";
 
 export const runtime = "nodejs";
-
 export async function POST(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const attemptId = Number(id);
-  if (!Number.isInteger(attemptId)) {
+  if (!/^[1-9]\d*$/.test(id) || !Number.isSafeInteger(attemptId) || attemptId > 2_147_483_647) {
     return NextResponse.json({ error: "invalid_attempt_id" }, { status: 400 });
   }
-
+  const userId = getConfig().localUserId;
   const existing = await prisma.attempt.findUnique({
-    where: { id: attemptId },
+    where: { id: attemptId, userId },
     include: { evaluation: true }
   });
   if (!existing) return NextResponse.json({ error: "not_found" }, { status: 404 });
-  if (existing.evaluation) {
+  if (existing.evaluation)
     return NextResponse.json({ status: "evaluated", evaluationId: existing.evaluation.id });
-  }
-  if (isInFlight(attemptId)) {
-    return NextResponse.json({ status: "evaluating" }, { status: 202 });
-  }
-  markInFlight(attemptId);
-
-  // A retry after a failure: clear the stale EVAL_FAILED first, or the client's
-  // next poll reads it as this run's result and shows "failed" straight away.
-  // Guarded in the DB rather than on `existing`: a previous run can write
-  // EVAL_FAILED after that read and leave the in-flight set before we get here.
   try {
-    await prisma.attempt.updateMany({
-      where: { id: attemptId, status: AttemptStatus.EVAL_FAILED },
-      data: { status: AttemptStatus.SUBMITTED }
+    const job = await enqueueJob({
+      kind: "EVALUATION",
+      userId,
+      payload: { attemptId },
+      dedupeKey: String(attemptId)
     });
-  } catch {
-    clearInFlight(attemptId);
-    return NextResponse.json({ error: "retry_failed" }, { status: 500 });
-  }
-
-  // The model call can take well over Cloudflare's ~30s request cap, so we don't
-  // await it here. The Node server is long-lived, so this promise runs to
-  // completion and writes the result; the client polls GET /api/history/:id
-  // until the evaluation row appears (or the attempt is marked EVAL_FAILED).
-  void runEvaluation(attemptId).finally(() => clearInFlight(attemptId));
-
-  return NextResponse.json({ status: "evaluating" }, { status: 202 });
-}
-
-async function runEvaluation(attemptId: number): Promise<void> {
-  const attempt = await prisma.attempt.findUnique({
-    where: { id: attemptId },
-    include: { problem: { include: { exerciseType: true } }, evaluation: true }
-  });
-  if (!attempt || attempt.evaluation) return;
-
-  const cfg = getConfig();
-  try {
-    const mode = getMode(attempt.problem.exerciseType.slug);
-    const evaluatorPrompt = await loadActivePrompt({
-      role: PromptRole.EVALUATOR,
-      exerciseSlug: attempt.problem.exerciseType.slug
-    });
-
-    const problemAsCommon = {
-      ...(attempt.problem.userVisiblePayload as object),
-      hiddenAnswerKey: attempt.problem.hiddenAnswerKey
-    } as unknown as GeneratedProblemCommon;
-
-    const result = await mode.evaluate({
-      problem: problemAsCommon,
-      userAnswer: attempt.responseText
-    });
-    const e = result.evaluation;
-
-    await prisma.$transaction(async (tx) => {
-      const row = await tx.evaluation.create({
-        data: {
-          attemptId,
-          evaluatorPromptVersionId: evaluatorPrompt.id,
-          model: cfg.openai.model,
-          overallScore: e.overallScore,
-          shortDiagnosis: e.shortDiagnosis,
-          summary: e.summary,
-          topFixes: e.topFixes as unknown as Prisma.InputJsonValue,
-          rewriteSuggestions: e.rewriteSuggestions as unknown as Prisma.InputJsonValue,
-          strongAnswerSketch: e.strongAnswerSketch ?? null,
-          nextRep: e.nextRep,
-          clarificationQuestion: e.clarificationQuestion ?? null,
-          errorPatternTags: e.errorPatternTags,
-          missClassifications: e.missClassifications,
-          rawOutput: e as unknown as Prisma.InputJsonValue
-        }
-      });
-      for (const d of e.dimensions) {
-        await tx.evaluationDimension.create({
-          data: {
-            evaluationId: row.id,
-            dimension: d.name,
-            score: d.score,
-            rationale: d.rationale,
-            exampleResponse: d.exampleResponse ?? null
-          }
-        });
-      }
-      await tx.attempt.update({ where: { id: attemptId }, data: { status: AttemptStatus.EVALUATED } });
-    });
-  } catch {
-    // Model/validation error: mark the attempt so the client can stop polling
-    // and offer a retry. The failure detail is captured on the model_runs row.
-    await prisma.attempt
-      .update({ where: { id: attemptId }, data: { status: AttemptStatus.EVAL_FAILED } })
-      .catch(() => {});
+    wakeWorker();
+    return NextResponse.json({ status: "evaluating", jobId: job.id }, { status: 202 });
+  } catch (error) {
+    if (error instanceof JobCapacityError)
+      return NextResponse.json(
+        {
+          error: "evaluation_busy",
+          message: "Two evaluations are already queued or running. Please retry shortly."
+        },
+        { status: 429, headers: { "Retry-After": "10" } }
+      );
+    throw error;
   }
 }

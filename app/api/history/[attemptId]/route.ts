@@ -1,23 +1,20 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db/client";
-import { isInFlight } from "@/lib/evaluation/in-flight";
+import { getConfig } from "@/lib/config";
+import { getEvaluationJob } from "@/lib/jobs/store";
 
 export const runtime = "nodejs";
 
 export async function GET(_req: Request, { params }: { params: Promise<{ attemptId: string }> }) {
   const { attemptId } = await params;
   const id = Number(attemptId);
-  if (!Number.isInteger(id)) return NextResponse.json({ error: "invalid_id" }, { status: 400 });
+  if (!/^[1-9]\d*$/.test(attemptId) || !Number.isSafeInteger(id) || id > 2_147_483_647)
+    return NextResponse.json({ error: "invalid_id" }, { status: 400 });
 
-  // Checked on both sides of the query, so a run that finishes or starts while
-  // it's in progress still counts: a finished run committed its result (or
-  // EVAL_FAILED) before leaving the set, and a starting retry is marked before
-  // it resets the row. Either way the row read below may be stale, and a lone
-  // "not in flight" would make a live or just-finished evaluation look
-  // interrupted.
-  const inFlightBefore = isInFlight(id);
+  const userId = getConfig().localUserId;
+  const before = await getEvaluationJob(id, userId);
   const attempt = await prisma.attempt.findUnique({
-    where: { id },
+    where: { id, userId },
     include: {
       problem: {
         select: {
@@ -32,7 +29,9 @@ export async function GET(_req: Request, { params }: { params: Promise<{ attempt
     }
   });
   if (!attempt) return NextResponse.json({ error: "not_found" }, { status: 404 });
-  const evaluating = inFlightBefore || isInFlight(id);
+  const after = await getEvaluationJob(id, userId);
+  const active = (status?: string) => status === "QUEUED" || status === "RUNNING";
+  const evaluating = active(before?.status) || active(after?.status);
 
   return NextResponse.json({
     attempt: {
@@ -40,11 +39,11 @@ export async function GET(_req: Request, { params }: { params: Promise<{ attempt
       responseText: attempt.responseText,
       timeSpentSeconds: attempt.timeSpentSeconds,
       submittedAt: attempt.submittedAt,
-      status: attempt.status
+      status: after?.status === "FAILED" && !attempt.evaluation ? "EVAL_FAILED" : attempt.status
     },
     problem: attempt.problem,
     evaluation: attempt.evaluation,
-    // Lets the client tell a running evaluation from one a restart killed.
+    // Queued and lease-recovering work remains active across server restarts.
     evaluating
   });
 }

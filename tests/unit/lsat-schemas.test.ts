@@ -5,7 +5,7 @@ function question(number: number) {
   return {
     number,
     stimulus:
-      "A city replaced its bus fleet and ridership rose the following quarter, so officials concluded the new buses caused the increase.",
+      `City ${number} replaced its bus fleet and ridership rose the following quarter, so officials concluded the new buses caused the increase.`,
     questionStem: "Which one of the following is an assumption required by the argument?",
     choices: { A: "alpha", B: "beta", C: "gamma", D: "delta", E: "epsilon" },
     questionType: "Necessary assumption",
@@ -27,8 +27,8 @@ const validProblem = {
   questions: [question(1), question(2), question(3)],
   rubric: {
     dimensions: [
-      { name: "Correctness", maxScore: 10, description: "" },
-      { name: "Reasoning quality", maxScore: 5, description: "" }
+      { name: "Correctness", maxScore: 10, description: "Assess this dimension against the answer key." },
+      { name: "Reasoning quality", maxScore: 5, description: "Assess this dimension against the answer key." }
     ]
   },
   tags: ["necessary-assumption", "flaw"],

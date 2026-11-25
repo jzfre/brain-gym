@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/db/client";
+import Link from "next/link";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 
@@ -32,7 +33,7 @@ export default async function AdminProblemsPage() {
         <Card key={p.id}>
           <CardHeader className="pb-2">
             <CardTitle className="flex items-baseline justify-between text-base">
-              <span>{p.title}</span>
+              <Link href={`/today?problemId=${p.id}`} className="hover:underline">{p.title}</Link>
               <span className="font-mono text-sm">
                 {p.nearestSimilarity != null ? p.nearestSimilarity.toFixed(3) : "—"}
               </span>

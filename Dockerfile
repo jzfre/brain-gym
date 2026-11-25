@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1.7
 
-ARG NODE_IMAGE=node:20-alpine
+ARG NODE_IMAGE=node:22-alpine
 
 # ─── base ─────────────────────────────────────────────────────────────────────
 FROM ${NODE_IMAGE} AS base
@@ -11,6 +11,7 @@ RUN corepack enable && corepack prepare pnpm@9.12.3 --activate
 # ─── deps ─────────────────────────────────────────────────────────────────────
 FROM base AS deps
 COPY package.json pnpm-lock.yaml .npmrc ./
+COPY prisma/schema.prisma ./prisma/schema.prisma
 RUN pnpm install --frozen-lockfile
 
 # ─── builder ──────────────────────────────────────────────────────────────────
@@ -40,7 +41,7 @@ RUN addgroup --system --gid 1001 nodejs && \
 RUN mkdir -p /opt/tools && cd /opt/tools && \
     npm init -y >/dev/null && \
     npm install --omit=dev --no-audit --no-fund \
-        prisma@5.22.0 tsx@4.19.2 && \
+        prisma@5.22.0 tsx@4.23.15 && \
     chown -R nextjs:nodejs /opt/tools
 ENV PATH=/opt/tools/node_modules/.bin:$PATH
 

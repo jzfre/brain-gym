@@ -60,6 +60,16 @@ describe("session token", () => {
     expect(await verifySessionToken(token, SECRET, 3600, later)).toBe(false);
   });
 
+  it("rejects a validly signed future token", async () => {
+    const token = await issueSessionToken(SECRET, NOW + 60_000);
+    expect(await verifySessionToken(token, SECRET, 3600, NOW)).toBe(false);
+  });
+
+  it("expires exactly at the max-age boundary", async () => {
+    const token = await issueSessionToken(SECRET, NOW);
+    expect(await verifySessionToken(token, SECRET, 3600, NOW + 3_600_000)).toBe(false);
+  });
+
   it("accepts a token within its max age", async () => {
     const token = await issueSessionToken(SECRET, NOW);
     const later = NOW + 3599 * 1000;
